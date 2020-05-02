@@ -6,6 +6,15 @@ import torch.nn.functional as F
 from rrin.unet import UNet
 
 
+def weight_init(m):
+    if isinstance(m, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
+        nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
+        nn.init.constant_(m.bias, 0.)
+    elif isinstance(m, (nn.BatchNorm2d,)):
+        nn.init.constant_(m.weight, 1.)
+        nn.init.constant_(m.bias, 0.)
+
+
 def warp(img, flow):
     _, _, H, W = img.size()
     gridX, gridY = np.meshgrid(np.arange(W), np.arange(H))
@@ -22,103 +31,52 @@ def warp(img, flow):
     return warped
 
 
-# class Net(nn.Module):
-#     def __init__(self):
-#         super(Net, self).__init__()
-#
-#         self.flow = UNet(6, 4, 5)
-#         self.refine_flow = UNet(10, 4, 4)
-#         self.mask = UNet(16, 2, 4)
-#         self.final = UNet(9, 3, 4)
-#
-#     def process(self, input_0, input_1, t):
-#         input_0_1 = torch.cat((input_0, input_1), 1)
-#         flow = self.flow(input_0_1)
-#
-#         Flow_0_1, Flow_1_0 = flow[:, :2, :, :], flow[:, 2:4, :, :]
-#         flow_t_0 = -(1 - t) * t * Flow_0_1 + t * t * Flow_1_0
-#         flow_t_1 = (1 - t) * (1 - t) * Flow_0_1 - t * (1 - t) * Flow_1_0
-#         Flow_t = torch.cat((flow_t_0, flow_t_1, input_0_1), 1)
-#         Flow_t = self.refine_flow(Flow_t)
-#         flow_t_0 = flow_t_0 + Flow_t[:, :2, :, :]
-#         flow_t_1 = flow_t_1 + Flow_t[:, 2:4, :, :]
-#
-#         input_0_t = warp(input_0, flow_t_0)
-#         input_1_t = warp(input_1, flow_t_1)
-#
-#         temp = torch.cat((flow_t_0, flow_t_1, input_0_1, input_0_t, input_1_t), 1)
-#         Mask = F.sigmoid(self.mask(temp))
-#         w1, w2 = (1 - t) * Mask[:, 0:1, :, :], t * Mask[:, 1:2, :, :]
-#         output = (w1 * input_0_t + w2 * input_1_t) / (w1 + w2 + 1e-8)
-#
-#         return output
-#
-#     def forward(self, input_0, input_1, t=0.5):
-#         output = self.process(input_0, input_1, t)
-#
-#         final = torch.cat((input_0, input_1, output), 1)
-#         final = self.final(final)
-#         final = final + output
-#         final = final.clamp(0, 1)
-#
-#         return final
-
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
+class Model(nn.Module):
+    def __init__(self, level=3):
+        super().__init__()
 
         self.unet_1 = UNet(6, 4, 5)
         self.unet_2 = UNet(10, 4, 4)
         self.unet_3 = UNet(16, 2, 4)
         self.unet_4 = UNet(9, 3, 4)
 
-    def process(self, input_0, input_1, t):
-        flow = self.unet_1(torch.cat((input_0, input_1), 1))
-        flow_0_1, flow_1_0 = flow[:, :2, :, :], flow[:, 2:, :, :]
+        self.apply(weight_init)
 
-        flow_hat_0_1 = (1 - t) * flow_0_1 + t * -flow_1_0
+    def process(self, i_0, i_1, t):
+        i = torch.cat((i_0, i_1), 1)
 
-        flow_hat_t_0 = t * -flow_hat_0_1
-        flow_hat_t_1 = (1 - t) * flow_hat_0_1
+        f_0_1, f_1_0 = self.unet_1(i).split(2, dim=1)
 
-        flow_tilde = self.unet_2(torch.cat((input_0, input_1, flow_hat_t_0, flow_hat_t_1), 1))
-        flow_tilde_t_0 = flow_tilde[:, :2, :, :]
-        flow_tilde_t_1 = flow_tilde[:, 2:, :, :]
+        f = (1 - t) * f_0_1 + t * -f_1_0
+        f_hat_t_0 = t * -f
+        f_hat_t_1 = (1 - t) * f
 
-        flow_t_0 = flow_hat_t_0 + flow_tilde_t_0
-        flow_t_1 = flow_hat_t_1 + flow_tilde_t_1
+        f_tilde_t_0, f_tilde_t_1 = self.unet_2(torch.cat((i, f_hat_t_0, f_hat_t_1), 1)).split(2, dim=1)
 
-        input_hat_0_t = warp(input_0, flow_t_0)
-        input_hat_1_t = warp(input_1, flow_t_1)
+        f_t_0 = f_hat_t_0 + f_tilde_t_0
+        f_t_1 = f_hat_t_1 + f_tilde_t_1
 
-        m = self.unet_3(torch.cat((input_0, input_1, input_hat_0_t, input_hat_1_t, flow_t_0, flow_t_1), 1))
-        m_0 = m[:, 0:1, :, :]
-        m_1 = m[:, 1:2, :, :]
-        m_t = torch.sigmoid(m_0) / torch.sigmoid(m_1)
+        i_hat_0_t = warp(i_0, f_t_0)
+        i_hat_1_t = warp(i_1, f_t_1)
 
-        a_t = (t * m_t) / (1 - t)
-        b_t = (1 - t) / (t * m_t)
-        input_hat_t_c = 1 / (1 + a_t) * input_hat_0_t + 1 / (1 + b_t) * input_hat_1_t
+        m_0, m_1 = F.sigmoid(self.unet_3(torch.cat((i, i_hat_0_t, i_hat_1_t, f_t_0, f_t_1), 1))).split(1, dim=1)
+
+        w_0, w_1 = (1 - t) * m_0, t * m_1
+        i_hat_t_c = (w_0 * i_hat_0_t + w_1 * i_hat_1_t) / (w_0 + w_1 + 1e-8)
 
         etc = {
-            'flow_hat_0_1': flow_hat_0_1,
-
-            'flow_hat_t_0': flow_hat_t_0,
-            'flow_hat_t_1': flow_hat_t_1,
-
-            'flow_tilde_t_0': flow_tilde_t_0,
-            'flow_tilde_t_1': flow_tilde_t_1,
-
-            'flow_t_0': flow_t_0,
-            'flow_t_1': flow_t_1,
+            'flow_t_0': f_t_0,
+            'flow_t_1': f_t_1,
+            'mask_0': m_0,
+            'mask_1': m_1,
         }
 
-        return input_hat_t_c, etc
+        return i_hat_t_c, etc
 
-    def forward(self, input_0, input_1, t=0.5):
-        input_hat_t_c, etc = self.process(input_0, input_1, t)
-
-        input_tilde_t = self.unet_4(torch.cat((input_0, input_1, input_hat_t_c), 1))
-        input_hat_t = input_hat_t_c + input_tilde_t
-
-        return input_hat_t, etc
+    def forward(self, i_0, i_1, t=0.5):
+        i_hat_t_c, etc = self.process(i_0, i_1, t)
+        i_tilde_t = self.unet_4(torch.cat((i_0, i_1, i_hat_t_c), 1))
+        i_hat_t = i_hat_t_c + i_tilde_t
+        # final = final  # .clamp(0,1)
+      
+        return i_hat_t, etc

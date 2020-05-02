@@ -6,6 +6,11 @@ from torch import nn
 # https://github.com/jvanvugt/pytorch-unet
 
 
+class ReLU(nn.LeakyReLU):
+    def __init__(self, ):
+        super().__init__(0.1, inplace=True)
+
+
 class UNet(nn.Module):
     def __init__(
             self,
@@ -15,7 +20,7 @@ class UNet(nn.Module):
             wf=5):
         super().__init__()
 
-        self.relu = nn.LeakyReLU(0.1)
+        self.relu = ReLU()
         self.pool = nn.AvgPool2d(2, 2)
 
         prev_channels = in_channels
@@ -59,9 +64,9 @@ class UNetConvBlock(nn.Sequential):
     def __init__(self, in_size, out_size):
         super().__init__(
             nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.1),
+            ReLU(),
             nn.Conv2d(out_size, out_size, kernel_size=3, padding=1),
-            nn.LeakyReLU(0.1))
+            ReLU())
 
 
 class UNetUpBlock(nn.Module):
