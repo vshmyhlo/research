@@ -1,5 +1,4 @@
 import importlib.util
-import math
 import os
 
 import click
@@ -10,7 +9,7 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.metrics import Last, Mean, Metric
-from all_the_tools.torch.losses import dice_loss, softmax_cross_entropy
+from all_the_tools.torch.losses import dice_loss
 from all_the_tools.torch.optim import LookAhead
 from all_the_tools.torch.utils import Saver
 from all_the_tools.transforms import Extract, ApplyTo
@@ -18,9 +17,10 @@ from all_the_tools.utils import seed_python
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from dataset import load_labeled_data, Dataset
-from model import UNet as Model
-from transforms import ToTensor, RandomHorizontalFlip
+from segmentation.dataset import ADE20KDataset
+from segmentation.model import UNet as Model
+from segmentation.transforms import ToTensor, RandomHorizontalFlip, Resize, RandomCrop
+from utils import compute_nrow
 
 # TODO: maybe clip bad losses
 # TODO: ewa of loss/wights and use it to reweight
@@ -78,7 +78,7 @@ from transforms import ToTensor, RandomHorizontalFlip
 # TODO: ewa over distillation targets
 # TODO: ewa over distillation mixing coefficient
 
-NUM_CLASSES = 2
+NUM_CLASSES = 150 + 1
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
@@ -99,62 +99,66 @@ class IoU(Metric):
         self.union = 0
 
 
-def compute_weight_from_loss(loss):
-    weight = 1 - 1 / (1 + loss)
-    weight = weight / weight.mean()
+@click.command()
+@click.option('--config-path', type=click.Path(), required=True)
+@click.option('--dataset-path', type=click.Path(), required=True)
+@click.option('--experiment-path', type=click.Path(), required=True)
+@click.option('--restore-path', type=click.Path())
+@click.option('--workers', type=click.INT, default=os.cpu_count())
+def main(config_path, **kwargs):
+    config = load_config(
+        config_path,
+        **kwargs)
 
-    return weight
+    train_transform, eval_transform = build_transforms()
 
+    train_data_loader = torch.utils.data.DataLoader(
+        ADE20KDataset(config.dataset_path, subset='training', transform=train_transform),
+        batch_size=config.train.batch_size,
+        drop_last=True,
+        shuffle=True,
+        num_workers=config.workers,
+        worker_init_fn=worker_init_fn)
+    eval_data_loader = torch.utils.data.DataLoader(
+        ADE20KDataset(config.dataset_path, subset='validation', transform=eval_transform),
+        batch_size=config.eval.batch_size,
+        num_workers=config.workers,
+        worker_init_fn=worker_init_fn)
 
-def compute_nrow(images):
-    b, _, h, w = images.size()
-    nrow = math.ceil(math.sqrt(h * b / w))
+    model = Model(num_classes=NUM_CLASSES).to(DEVICE)
+    optimizer = build_optimizer(model.parameters(), config.train.optimizer)
+    scheduler = build_scheduler(
+        optimizer, config.train.scheduler, config.train.optimizer, config.epochs, len(train_data_loader))
+    saver = Saver({
+        'model': model,
+        'optimizer': optimizer,
+        'scheduler': scheduler,
+    })
+    if config.restore_path is not None:
+        saver.load(config.restore_path, keys=['model'])
 
-    return nrow
-
-
-def weighted_sum(a, b, w):
-    return w * a + (1 - w) * b
+    for epoch in range(1, config.epochs + 1):
+        train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
+        eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        saver.save(
+            os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
+            epoch=epoch)
 
 
 def worker_init_fn(_):
     seed_python(torch.initial_seed() % 2**32)
 
 
-def softmax_recall_loss(input, target, dim=-1, eps=1e-7):
-    assert input.dim() == 2
-    assert input.size() == target.size()
-
-    input = input.softmax(dim)
-
-    tp = (target * input).sum()
-    fn = (target * (1 - input)).sum()
-    r = tp / (tp + fn + eps)
-
-    loss = 1 - r
-
-    return loss
-
-
 def compute_loss(input, target, config):
-    ce = softmax_cross_entropy(input, target, axis=1)
-    ce = ce.mean((0, 1, 2))
+    # ce = softmax_cross_entropy(input, target, dim=1)
+    # ce = ce.mean((0, 1, 2))
 
-    dice = dice_loss(input.softmax(1), target, smooth=0, axis=(0, 2, 3))
+    dice = dice_loss(input.softmax(1), target, smooth=0, dim=(0, 2, 3))
     dice = dice.mean(0)
 
-    loss = ce + dice
+    loss = dice
 
     return loss
-
-
-def train_eval_split(data, seed, eval_size=5000):
-    indices = np.random.RandomState(seed).permutation(len(data))
-    train_indices = indices[eval_size:]  # [:100]
-    eval_indices = indices[:eval_size]
-    print('split: {}, {}'.format(len(train_indices), len(eval_indices)))
-
-    return train_indices, eval_indices
 
 
 def build_optimizer(parameters, config):
@@ -213,6 +217,10 @@ def load_config(config_path, **kwargs):
     return config
 
 
+def image_one_hot(input, n, dtype=torch.float):
+    return torch.eye(n, dtype=dtype, device=input.device)[input].permute(0, 3, 1, 2)
+
+
 def draw_masks(input):
     colors = np.random.RandomState(42).uniform(0.25, 1., size=(NUM_CLASSES, 3))
     colors = torch.tensor(colors, dtype=torch.float).to(input.device)
@@ -235,11 +243,8 @@ def denormalize(input):
 
 
 def build_transforms():
-    pre_processing = T.Compose([
-        ApplyTo('image', T.Resize((1024 // 4, 1920 // 4))),
-        ApplyTo('mask', T.Resize((1024 // 4, 1920 // 4))),
-    ])
-    post_processing = T.Compose([
+    pre_process = Resize(256)
+    post_process = T.Compose([
         ToTensor(NUM_CLASSES),
         ApplyTo(
             'image',
@@ -248,16 +253,16 @@ def build_transforms():
                 std=(0.229, 0.224, 0.225))),
         Extract(['image', 'mask']),
     ])
-  
     train_transform = T.Compose([
-        pre_processing,
-        ApplyTo('image', T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3)),
+        pre_process,
+        RandomCrop(256),
         RandomHorizontalFlip(),
-        post_processing,
+        # ApplyTo('image', T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3)),
+        post_process,
     ])
     eval_transform = T.Compose([
-        pre_processing,
-        post_processing,
+        pre_process,
+        post_process,
     ])
 
     return train_transform, eval_transform
@@ -271,8 +276,9 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     }
 
     model.train()
-    for images, targets in tqdm(data_loader, desc='[epoch {}/{}] train'.format(epoch, config.epochs)):
+    for images, targets in tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
         images, targets = images.to(DEVICE), targets.to(DEVICE)
+        targets = image_one_hot(targets, NUM_CLASSES)
 
         logits = model(images)
         loss = compute_loss(input=logits, target=targets, config=config.train)
@@ -280,9 +286,9 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['lr'].update(np.squeeze(scheduler.get_lr()))
 
+        optimizer.zero_grad()
         loss.mean().backward()
         optimizer.step()
-        optimizer.zero_grad()
         scheduler.step()
 
     with torch.no_grad():
@@ -293,10 +299,10 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image('images', torchvision.utils.make_grid(
             denormalize(images), nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        # writer.add_image('mask_true', torchvision.utils.make_grid(
-        #     mask_true, nrow=compute_nrow(mask_true), normalize=True), global_step=epoch)
-        # writer.add_image('mask_pred', torchvision.utils.make_grid(
-        #     mask_pred, nrow=compute_nrow(mask_pred), normalize=True), global_step=epoch)
+        writer.add_image('mask_true', torchvision.utils.make_grid(
+            mask_true, nrow=compute_nrow(mask_true), normalize=True), global_step=epoch)
+        writer.add_image('mask_pred', torchvision.utils.make_grid(
+            mask_pred, nrow=compute_nrow(mask_pred), normalize=True), global_step=epoch)
         writer.add_image('images_true', torchvision.utils.make_grid(
             denormalize(images) + mask_true, nrow=compute_nrow(images), normalize=True), global_step=epoch)
         writer.add_image('images_pred', torchvision.utils.make_grid(
@@ -315,8 +321,9 @@ def eval_epoch(model, data_loader, epoch, config):
 
     with torch.no_grad():
         model.eval()
-        for images, targets in tqdm(data_loader, desc='[epoch {}/{}] eval'.format(epoch, config.epochs)):
+        for images, targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
             images, targets = images.to(DEVICE), targets.to(DEVICE)
+            targets = image_one_hot(targets, NUM_CLASSES)
 
             logits = model(images)
             loss = compute_loss(input=logits, target=targets, config=config.train)
@@ -334,10 +341,10 @@ def eval_epoch(model, data_loader, epoch, config):
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image('images', torchvision.utils.make_grid(
             denormalize(images), nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        # writer.add_image('mask_true', torchvision.utils.make_grid(
-        #     mask_true, nrow=compute_nrow(mask_true), normalize=True), global_step=epoch)
-        # writer.add_image('mask_pred', torchvision.utils.make_grid(
-        #     mask_pred, nrow=compute_nrow(mask_pred), normalize=True), global_step=epoch)
+        writer.add_image('mask_true', torchvision.utils.make_grid(
+            mask_true, nrow=compute_nrow(mask_true), normalize=True), global_step=epoch)
+        writer.add_image('mask_pred', torchvision.utils.make_grid(
+            mask_pred, nrow=compute_nrow(mask_pred), normalize=True), global_step=epoch)
         writer.add_image('images_true', torchvision.utils.make_grid(
             denormalize(images) + mask_true, nrow=compute_nrow(images), normalize=True), global_step=epoch)
         writer.add_image('images_pred', torchvision.utils.make_grid(
@@ -345,63 +352,6 @@ def eval_epoch(model, data_loader, epoch, config):
 
     writer.flush()
     writer.close()
-
-
-@click.command()
-@click.option('--config-path', type=click.Path(), required=True)
-@click.option('--dataset-path', type=click.Tuple([click.Path(), click.Path()]), required=True)
-@click.option('--experiment-path', type=click.Path(), required=True)
-@click.option('--restore-path', type=click.Path())
-@click.option('--lr-search', is_flag=True)
-@click.option('--workers', type=click.INT, default=os.cpu_count())
-def main(**kwargs):
-    # TODO: seed everything
-    config = load_config(**kwargs)  # FIXME:
-    del kwargs
-
-    train_eval_data = load_labeled_data(*config.dataset_path)
-
-    train_indices, eval_indices = train_eval_split(train_eval_data, seed=config.seed)
-
-    train_transform, eval_transform = build_transforms()
-
-    train_dataset = Dataset(train_eval_data.iloc[train_indices], transform=train_transform)
-    eval_dataset = Dataset(train_eval_data.iloc[eval_indices], transform=eval_transform)
-
-    train_data_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=config.train.batch_size,
-        drop_last=True,
-        shuffle=True,
-        num_workers=config.workers,
-        worker_init_fn=worker_init_fn)
-    eval_data_loader = torch.utils.data.DataLoader(
-        eval_dataset,
-        batch_size=config.eval.batch_size,
-        num_workers=config.workers,
-        worker_init_fn=worker_init_fn)
-
-    model = Model(num_classes=NUM_CLASSES).to(DEVICE)
-    optimizer = build_optimizer(
-        model.parameters(), config.train.optimizer)
-    scheduler = build_scheduler(
-        optimizer, config.train.scheduler, config.train.optimizer, config.epochs, len(train_data_loader))
-    saver = Saver({
-        'model': model,
-        'optimizer': optimizer,
-        'scheduler': scheduler,
-    })
-    if config.restore_path is not None:
-        saver.load(config.restore_path, keys=['model'])
-
-    for epoch in range(1, config.epochs + 1):
-        train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
-        eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
-        saver.save(
-            os.path.join(
-                config.experiment_path,
-                'checkpoint_{}.pth'.format(epoch)),
-            epoch=epoch)
 
 
 if __name__ == '__main__':
