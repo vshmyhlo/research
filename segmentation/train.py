@@ -9,8 +9,7 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.metrics import Last, Mean, Metric
-from all_the_tools.torch.losses import dice_loss
-from all_the_tools.torch.optim import LookAhead
+from all_the_tools.torch.losses import softmax_cross_entropy
 from all_the_tools.torch.utils import Saver
 from all_the_tools.transforms import Extract, ApplyTo
 from all_the_tools.utils import seed_python
@@ -149,14 +148,11 @@ def worker_init_fn(_):
     seed_python(torch.initial_seed() % 2**32)
 
 
-def compute_loss(input, target, config):
-    # ce = softmax_cross_entropy(input, target, dim=1)
-    # ce = ce.mean((0, 1, 2))
+def compute_loss(input, target):
+    ce = softmax_cross_entropy(input, target, dim=1)
+    ce = ce.mean((0, 1, 2))
 
-    dice = dice_loss(input.softmax(1), target, smooth=0, dim=(0, 2, 3))
-    dice = dice.mean(0)
-
-    loss = dice
+    loss = ce
 
     return loss
 
@@ -182,12 +178,6 @@ def build_optimizer(parameters, config):
             weight_decay=config.weight_decay)
     else:
         raise AssertionError('invalid optimizer {}'.format(config.type))
-
-    if config.lookahead is not None:
-        optimizer = LookAhead(
-            optimizer,
-            lr=config.lookahead.lr,
-            num_steps=config.lookahead.steps)
 
     return optimizer
 
@@ -281,7 +271,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         targets = image_one_hot(targets, NUM_CLASSES)
 
         logits = model(images)
-        loss = compute_loss(input=logits, target=targets, config=config.train)
+        loss = compute_loss(input=logits, target=targets)
 
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['lr'].update(np.squeeze(scheduler.get_lr()))
@@ -326,7 +316,7 @@ def eval_epoch(model, data_loader, epoch, config):
             targets = image_one_hot(targets, NUM_CLASSES)
 
             logits = model(images)
-            loss = compute_loss(input=logits, target=targets, config=config.train)
+            loss = compute_loss(input=logits, target=targets)
 
             metrics['loss'].update(loss.data.cpu().numpy())
             metrics['iou'].update(
