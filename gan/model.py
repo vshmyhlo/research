@@ -1,15 +1,47 @@
+import math
 from collections import OrderedDict
 
 import numpy as np
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.init import _calculate_correct_fan, calculate_gain
 
 
-def weights_init(m):
-    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d,)):
-        nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
-        nn.init.constant_(m.bias, 0)
-    elif isinstance(m, (nn.BatchNorm2d,)):
-        pass
+class ReLU(nn.LeakyReLU):
+    def __init__(self):
+        super().__init__(0.1)
+
+
+class Conv(nn.Conv2d):
+    def forward(self, input):
+        weight = kaiming_normal_scale(self.weight, a=0.1, mode='fan_in', nonlinearity='leaky_relu')
+
+        return F.conv2d(input, weight, self.bias, self.stride,
+                        self.padding, self.dilation, self.groups)
+
+
+class ConvTranspose(nn.ConvTranspose2d):
+    def forward(self, input, output_size=None):
+        weight = kaiming_normal_scale(self.weight, a=0.1, mode='fan_in', nonlinearity='leaky_relu')
+        output_padding = self._output_padding(input, output_size, self.stride, self.padding, self.kernel_size)
+
+        return F.conv_transpose2d(
+            input, weight, self.bias, self.stride, self.padding,
+            output_padding, self.groups, self.dilation)
+
+
+class PixelNorm(nn.Module):
+    def __init__(self, eps=1e-8):
+        super().__init__()
+
+        self.eps = eps
+
+    def forward(self, input):
+        norm = torch.sqrt((input**2).mean(1, keepdim=True) + self.eps)
+        input = input / norm
+
+        return input
 
 
 class Generator(nn.Module):
@@ -17,23 +49,39 @@ class Generator(nn.Module):
         def build_block_for_level(level, base_channels=16):
             if level == 0:
                 conv = nn.Sequential(
-                    nn.ConvTranspose2d(
+                    ConvTranspose(
                         latent_size,
                         base_channels * 2**(max_level - level - 1),
                         4),
-                    nn.LeakyReLU(0.1))
+                    ReLU(),
+                    PixelNorm(),
+                    Conv(
+                        base_channels * 2**(max_level - level - 1),
+                        base_channels * 2**(max_level - level - 1),
+                        3,
+                        padding=1),
+                    ReLU(),
+                    PixelNorm())
             else:
                 conv = nn.Sequential(
                     self.upsample,
-                    nn.Conv2d(
+                    Conv(
                         base_channels * 2**(max_level - level),
                         base_channels * 2**(max_level - level - 1),
                         3,
                         padding=1),
-                    nn.LeakyReLU(0.1))
+                    ReLU(),
+                    PixelNorm(),
+                    Conv(
+                        base_channels * 2**(max_level - level - 1),
+                        base_channels * 2**(max_level - level - 1),
+                        3,
+                        padding=1),
+                    ReLU(),
+                    PixelNorm())
 
             to_rgb = nn.Sequential(
-                nn.Conv2d(base_channels * 2**(max_level - level - 1), 3, 1),
+                Conv(base_channels * 2**(max_level - level - 1), 3, 1),
                 nn.Tanh())
 
             return nn.ModuleDict(OrderedDict({
@@ -50,8 +98,6 @@ class Generator(nn.Module):
             str(level): build_block_for_level(level)
             for level in levels
         }))
-        # print(self.blocks)
-        self.apply(weights_init)
 
     def forward(self, input, level, a):
         input = input.view(input.size(0), input.size(1), 1, 1)
@@ -77,23 +123,35 @@ class Discriminator(nn.Module):
         def build_block_for_level(level, base_channels=16):
             if level == 0:
                 conv = nn.Sequential(
-                    nn.Conv2d(
+                    Conv(
+                        base_channels * 2**(max_pow - level - 1),
+                        base_channels * 2**(max_pow - level - 1),
+                        3,
+                        padding=1),
+                    ReLU(),
+                    Conv(
                         base_channels * 2**(max_pow - level - 1),
                         1,
                         4))
             else:
                 conv = nn.Sequential(
-                    nn.Conv2d(
+                    Conv(
+                        base_channels * 2**(max_pow - level - 1),
+                        base_channels * 2**(max_pow - level - 1),
+                        3,
+                        padding=1),
+                    ReLU(),
+                    Conv(
                         base_channels * 2**(max_pow - level - 1),
                         base_channels * 2**(max_pow - level),
                         3,
                         padding=1),
-                    nn.LeakyReLU(0.1),
+                    ReLU(),
                     self.downsample)
 
             from_rgb = nn.Sequential(
-                nn.Conv2d(3, base_channels * 2**(max_pow - level - 1), 1),
-                nn.LeakyReLU(0.1))
+                Conv(3, base_channels * 2**(max_pow - level - 1), 1),
+                ReLU())
 
             return nn.ModuleDict(OrderedDict({
                 'conv': conv,
@@ -109,8 +167,6 @@ class Discriminator(nn.Module):
             str(level): build_block_for_level(level)
             for level in levels
         }))
-        # print(self.blocks)
-        self.apply(weights_init)
 
     def forward(self, input, level, a):
         right = self.blocks[str(level)].conv(self.blocks[str(level)].from_rgb(input))
@@ -126,3 +182,11 @@ class Discriminator(nn.Module):
         input = input.view(input.size(0))
 
         return input
+
+
+def kaiming_normal_scale(tensor, a=0, mode='fan_in', nonlinearity='leaky_relu'):
+    fan = _calculate_correct_fan(tensor, mode)
+    gain = calculate_gain(nonlinearity, a)
+    std = gain / math.sqrt(fan)
+
+    return tensor * std

@@ -30,6 +30,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 @click.option('--dataset-path', type=click.Path(), required=True)
 @click.option('--experiment-path', type=click.Path(), required=True)
 @click.option('--restore-path', type=click.Path())
+@click.option('--workers', type=click.INT, default=os.cpu_count())
 def main(config_path, **kwargs):
     config = load_config(
         config_path,
@@ -46,7 +47,7 @@ def main(config_path, **kwargs):
         dataset,
         batch_size=config.batch_size,
         shuffle=True,
-        num_workers=os.cpu_count(),
+        num_workers=config.workers,
         drop_last=True)
 
     model = nn.ModuleDict({
@@ -56,7 +57,7 @@ def main(config_path, **kwargs):
             config.image_size, config.latent_size),
     })
     model.to(DEVICE)
-    model.apply(weights_init)
+    model.apply(weight_init)
     if config.restore_path is not None:
         model.load_state_dict(torch.load(config.restore_path))
 
@@ -155,12 +156,13 @@ def build_transform():
     return transform, update_transform
 
 
-def weights_init(m):
-    if isinstance(m, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-        torch.nn.init.normal_(m.weight.data, 0., 0.02)
+def weight_init(m):
+    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d,)):
+        torch.nn.init.normal_(m.weight, 0., 1.)
+        torch.nn.init.constant_(m.bias, 0.)
     elif isinstance(m, (nn.BatchNorm2d,)):
-        torch.nn.init.normal_(m.weight.data, 1., 0.02)
-        torch.nn.init.constant_(m.bias.data, 0.)
+        torch.nn.init.constant_(m.weight, 1.)
+        torch.nn.init.constant_(m.bias, 0.)
 
 
 if __name__ == '__main__':
