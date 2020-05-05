@@ -27,7 +27,7 @@ class AdditiveNoise(nn.Module):
         self.weight = nn.Parameter(torch.Tensor(1, in_channels, 1, 1))
 
     def forward(self, input):
-        noise = torch.normal(0., 1., size=(1, 1, input.size(2), input.size(3)), device=input.device)
+        noise = torch.normal(0., 1., size=(input.size(0), 1, input.size(2), input.size(3)), device=input.device)
 
         return input + noise * self.weight
 
@@ -60,6 +60,25 @@ class InstanceNorm(nn.Module):
         return input
 
 
+class MinibatchStdDev(nn.Module):
+    def __init__(self, eps=1e-8):
+        super().__init__()
+
+        self.eps = eps
+
+    def forward(self, input):
+        stats = input
+
+        stats = stats - stats.mean(0, keepdim=True)
+        stats = torch.sqrt((stats**2).mean(0, keepdim=True) + self.eps)
+        stats = stats.mean((1, 2, 3), keepdim=True)
+
+        stats = stats.repeat(input.size(0), 1, input.size(2), input.size(3))
+        input = torch.cat([input, stats], 1)
+
+        return input
+
+
 class AdaptiveInstanceNorm(nn.Module):
     def __init__(self, channels, latent_size):
         super().__init__()
@@ -71,7 +90,7 @@ class AdaptiveInstanceNorm(nn.Module):
         input = self.norm(input)
         mean, std = self.style(latent).split(input.size(1), dim=1)
         input = input * (std + 1) + mean
-       
+
         return input
 
 

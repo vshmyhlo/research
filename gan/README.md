@@ -3,3 +3,4 @@
 * noise
 * normalization
 * mirror aug
+* move init to layers

@@ -14,8 +14,8 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 import utils
-from gan.discriminator import Discriminator
-from gan.generator import Generator
+from gan.model_v2 import Discriminator, Generator
+from gan.model_v2.generator import ZeroBlock
 from gan.modules import AdditiveNoise
 from transforms import Resettable
 
@@ -81,11 +81,13 @@ def main(config_path, **kwargs):
     for epoch in range(1, config.epochs + 1):
         model.train()
 
-        level, _ = compute_level(epoch - 1, config.epochs, 0, len(data_loader), config.image_size)
+        level, _ = compute_level(
+            epoch - 1, config.epochs, 0, len(data_loader), config.image_size, config.grow_min_level)
         update_transform(int(4 * 2**level))
 
         for i, (real, _) in enumerate(tqdm(data_loader, desc='epoch {} training'.format(epoch))):
-            _, a = compute_level(epoch - 1, config.epochs, i, len(data_loader), config.image_size)
+            _, a = compute_level(
+                epoch - 1, config.epochs, i, len(data_loader), config.image_size, config.grow_min_level)
 
             real = real.to(DEVICE)
 
@@ -135,13 +137,13 @@ def main(config_path, **kwargs):
         torch.save(model.state_dict(), os.path.join(config.experiment_path, 'model_{}.pth'.format(epoch)))
 
 
-def compute_level(epoch, max_epochs, step, max_steps, image_size):
-    max_level = np.log2(image_size / 4).astype(np.int32)
-    assert max_epochs % (max_level + 1) == 0
-    epochs_per_level = max_epochs // (max_level + 1)
+def compute_level(epoch, max_epochs, step, max_steps, image_size, min_level):
+    num_levels = np.log2(image_size / 4).astype(np.int32) - min_level + 1
+    assert max_epochs % num_levels == 0
+    epochs_per_level = max_epochs // num_levels
 
     # epoch = np.arange(max_epochs)
-    level = epoch // epochs_per_level
+    level = epoch // epochs_per_level + min_level
     # print(np.bincount(level))
 
     # step = np.arange(max_steps)
@@ -181,6 +183,8 @@ def weight_init(m):
         torch.nn.init.constant_(m.bias, 0.)
     elif isinstance(m, (AdditiveNoise,)):
         torch.nn.init.constant_(m.weight, 0.)
+    elif isinstance(m, (ZeroBlock,)):
+        torch.nn.init.constant_(m.input, 1.)
 
 
 if __name__ == '__main__':
