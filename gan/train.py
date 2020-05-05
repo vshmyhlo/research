@@ -9,8 +9,8 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
+from all_the_tools.metrics import Mean, Last
 from tensorboardX import SummaryWriter
-from ticpfptp.metrics import Mean
 from tqdm import tqdm
 
 import utils
@@ -22,7 +22,7 @@ from transforms import Resettable
 # TODO: norm z
 
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 @click.command()
@@ -71,40 +71,36 @@ def main(config_path, **kwargs):
     writer = SummaryWriter(config.experiment_path)
     metrics = {
         'loss/discriminator': Mean(),
-        'loss/generator': Mean()
+        'loss/generator': Mean(),
+        'level': Last(),
+        'alpha': Last(),
     }
 
     for epoch in range(1, config.epochs + 1):
         model.train()
 
-        ###
-        p = (epoch - 1) / config.epochs
-        level = np.log2(config.image_size / 4)
-        level = np.floor((level + 1) * p).astype(np.int32)
-
-        steps = np.linspace(0, 1, len(data_loader))
-        alphas = np.minimum(steps * 2, 1.)
-
+        level, _ = compute_level(epoch - 1, config.epochs, 0, len(data_loader), config.image_size)
         update_transform(int(4 * 2**level))
-        ###
 
         for i, (real, _) in enumerate(tqdm(data_loader, desc='epoch {} training'.format(epoch))):
+            _, a = compute_level(epoch - 1, config.epochs, i, len(data_loader), config.image_size)
+
             real = real.to(DEVICE)
 
             # discriminator ############################################################################################
             discriminator_opt.zero_grad()
 
             # real
-            scores = model.discriminator(real, level=level, a=alphas[i])
+            scores = model.discriminator(real, level=level, a=a)
             loss = F.softplus(-scores)
             loss.mean().backward()
             loss_real = loss
 
             # fake
             noise = noise_dist.sample((config.batch_size, config.latent_size)).to(DEVICE)
-            fake = model.generator(noise, level=level, a=alphas[i])
+            fake = model.generator(noise, level=level, a=a)
             assert real.size() == fake.size()
-            scores = model.discriminator(fake, level=level, a=alphas[i])
+            scores = model.discriminator(fake, level=level, a=a)
             loss = F.softplus(scores)
             loss.mean().backward()
             loss_fake = loss
@@ -117,21 +113,42 @@ def main(config_path, **kwargs):
 
             # fake
             noise = noise_dist.sample((config.batch_size, config.latent_size)).to(DEVICE)
-            fake = model.generator(noise, level=level, a=alphas[i])
+            fake = model.generator(noise, level=level, a=a)
             assert real.size() == fake.size()
-            scores = model.discriminator(fake, level=level, a=alphas[i])
+            scores = model.discriminator(fake, level=level, a=a)
             loss = F.softplus(-scores)
             loss.mean().backward()
 
             generator_opt.step()
             metrics['loss/generator'].update(loss.data.cpu().numpy())
 
+            metrics['level'].update(level)
+            metrics['alpha'].update(a)
+
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image('real', utils.make_grid((real + 1) / 2), global_step=epoch)
         writer.add_image('fake', utils.make_grid((fake + 1) / 2), global_step=epoch)
 
-        torch.save(model.state_dict(), os.path.join(config.experiment_path, 'model.pth'))
+        torch.save(model.state_dict(), os.path.join(config.experiment_path, 'model_{}.pth'.format(epoch)))
+
+
+def compute_level(epoch, max_epochs, step, max_steps, image_size):
+    max_level = np.log2(image_size / 4).astype(np.int32)
+    assert max_epochs % (max_level + 1) == 0
+    epochs_per_level = max_epochs // (max_level + 1)
+
+    # epoch = np.arange(max_epochs)
+    level = epoch // epochs_per_level
+    # print(np.bincount(level))
+
+    # step = np.arange(max_steps)
+    prog = step / max_steps
+    prog = ((epoch % epochs_per_level) + prog) / epochs_per_level
+    a = np.minimum(prog * 2, 1.)
+    # print(a.round(2))
+
+    return level, a
 
 
 def build_transform():
