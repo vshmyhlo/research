@@ -66,13 +66,13 @@ class Generator(nn.Module):
 class Mapping(nn.Sequential):
     def __init__(self, latent_size):
         super().__init__(
-            ConvEq(latent_size, latent_size, 1, scale=0.01),
+            ConvEq(latent_size, latent_size, 1, scale=0.1),
             ReLU(),
-            ConvEq(latent_size, latent_size, 1, scale=0.01),
+            ConvEq(latent_size, latent_size, 1, scale=0.1),
             ReLU(),
-            ConvEq(latent_size, latent_size, 1, scale=0.01),
+            ConvEq(latent_size, latent_size, 1, scale=0.1),
             ReLU())
-
+       
 
 class SeqBlock(nn.ModuleList):
     def __init__(self, *blocks):

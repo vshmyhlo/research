@@ -39,24 +39,39 @@ class PixelNorm(nn.Module):
         self.eps = eps
 
     def forward(self, input):
-        norm = input.std(1, keepdim=True)
-        input = input / (norm + self.eps)
+        norm = torch.sqrt((input**2).mean(1, keepdim=True) + self.eps)
+        input = input / norm
+
+        return input
+
+
+class InstanceNorm(nn.Module):
+    def __init__(self, eps=1e-8):
+        super().__init__()
+
+        self.eps = eps
+
+    def forward(self, input):
+        mean = input.mean((2, 3), keepdim=True)
+        input = input - mean
+        norm = torch.sqrt((input**2).mean((2, 3), keepdim=True) + self.eps)
+        input = input / norm
 
         return input
 
 
 class AdaptiveInstanceNorm(nn.Module):
-    def __init__(self, channels, latent_size, eps=1e-8):
+    def __init__(self, channels, latent_size):
         super().__init__()
 
+        self.norm = InstanceNorm()
         self.style = ConvEq(latent_size, channels * 2, 1)
-        self.eps = eps
 
     def forward(self, input, latent):
-        input = (input - input.mean((2, 3), keepdim=True)) / (input.std((2, 3), keepdim=True) + self.eps)
+        input = self.norm(input)
         mean, std = self.style(latent).split(input.size(1), dim=1)
-        input = (input * (std + 1)) + mean
-
+        input = input * (std + 1) + mean
+       
         return input
 
 
