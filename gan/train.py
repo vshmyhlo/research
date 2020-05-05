@@ -14,7 +14,9 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 import utils
-from gan.model import Discriminator, Generator
+from gan.discriminator import Discriminator
+from gan.generator import Generator
+from gan.modules import AdditiveNoise
 from transforms import Resettable
 
 # TODO: spherical z
@@ -177,9 +179,8 @@ def weight_init(m):
     if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d,)):
         torch.nn.init.normal_(m.weight, 0., 1.)
         torch.nn.init.constant_(m.bias, 0.)
-    elif isinstance(m, (nn.BatchNorm2d,)):
-        torch.nn.init.constant_(m.weight, 1.)
-        torch.nn.init.constant_(m.bias, 0.)
+    elif isinstance(m, (AdditiveNoise,)):
+        torch.nn.init.constant_(m.weight, 0.)
 
 
 if __name__ == '__main__':
