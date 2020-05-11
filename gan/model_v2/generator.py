@@ -66,13 +66,13 @@ class Generator(nn.Module):
 
 
 class Mapping(nn.Sequential):
-    def __init__(self, latent_size):
+    def __init__(self, latent_size, scale=0.01):
         super().__init__(
-            ConvEq(latent_size, latent_size, 1, scale=0.1),
+            ConvEq(latent_size, latent_size, 1, scale=scale),
             ReLU(),
-            ConvEq(latent_size, latent_size, 1, scale=0.1),
+            ConvEq(latent_size, latent_size, 1, scale=scale),
             ReLU(),
-            ConvEq(latent_size, latent_size, 1, scale=0.1),
+            ConvEq(latent_size, latent_size, 1, scale=scale),
             ReLU())
 
 
@@ -95,6 +95,8 @@ class ZeroBlock(nn.Module):
         self.noise = AdditiveNoise(out_channels)
         self.relu = ReLU()
         self.norm = AdaptiveInstanceNorm(out_channels, latent_size)
+
+        torch.nn.init.constant_(self.input, 1.)
 
     def forward(self, input, latent):
         assert input is None

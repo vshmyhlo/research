@@ -15,8 +15,6 @@ from tqdm import tqdm
 
 import utils
 from gan.model_v2 import Discriminator, Generator
-from gan.model_v2.generator import ZeroBlock
-from gan.modules import AdditiveNoise
 from transforms import Resettable
 
 # TODO: spherical z
@@ -59,14 +57,13 @@ def main(config_path, **kwargs):
             config.image_size, config.latent_size),
     })
     model.to(DEVICE)
-    model.apply(weight_init)
     if config.restore_path is not None:
         model.load_state_dict(torch.load(config.restore_path))
 
     discriminator_opt = torch.optim.Adam(
-        model.discriminator.parameters(), lr=config.opt.lr, betas=(0., 0.99), eps=1e-8)
+        model.discriminator.parameters(), lr=config.opt.lr, betas=config.opt.beta, eps=1e-8)
     generator_opt = torch.optim.Adam(
-        model.generator.parameters(), lr=config.opt.lr, betas=(0., 0.99), eps=1e-8)
+        model.generator.parameters(), lr=config.opt.lr, betas=config.opt.beta, eps=1e-8)
 
     noise_dist = torch.distributions.Normal(0, 1)
 
@@ -142,15 +139,11 @@ def compute_level(epoch, max_epochs, step, max_steps, image_size, min_level):
     assert max_epochs % num_levels == 0
     epochs_per_level = max_epochs // num_levels
 
-    # epoch = np.arange(max_epochs)
     level = epoch // epochs_per_level + min_level
-    # print(np.bincount(level))
 
-    # step = np.arange(max_steps)
     prog = step / max_steps
     prog = ((epoch % epochs_per_level) + prog) / epochs_per_level
     a = np.minimum(prog * 2, 1.)
-    # print(a.round(2))
 
     return level, a
 
@@ -175,16 +168,6 @@ def build_transform():
     ])
 
     return transform, update_transform
-
-
-def weight_init(m):
-    if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d,)):
-        torch.nn.init.normal_(m.weight, 0., 1.)
-        torch.nn.init.constant_(m.bias, 0.)
-    elif isinstance(m, (AdditiveNoise,)):
-        torch.nn.init.constant_(m.weight, 0.)
-    elif isinstance(m, (ZeroBlock,)):
-        torch.nn.init.constant_(m.input, 1.)
 
 
 if __name__ == '__main__':

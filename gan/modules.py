@@ -26,6 +26,8 @@ class AdditiveNoise(nn.Module):
 
         self.weight = nn.Parameter(torch.Tensor(1, in_channels, 1, 1))
 
+        torch.nn.init.constant_(self.weight, 0.)
+
     def forward(self, input):
         noise = torch.normal(0., 1., size=(input.size(0), 1, input.size(2), input.size(3)), device=input.device)
 
@@ -100,6 +102,9 @@ class ConvEq(nn.Conv2d):
 
         self.scale = scale
 
+        torch.nn.init.normal_(self.weight, 0., 1.)
+        torch.nn.init.constant_(self.bias, 0.)
+
     def forward(self, input):
         weight = kaiming_normal_scale(self.weight * self.scale, a=0.2, mode='fan_in', nonlinearity='leaky_relu')
 
@@ -112,6 +117,9 @@ class ConvTransposeEq(nn.ConvTranspose2d):
         super().__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
 
         self.scale = scale
+
+        torch.nn.init.normal_(self.weight, 0., 1.)
+        torch.nn.init.constant_(self.bias, 0.)
 
     def forward(self, input, output_size=None):
         weight = kaiming_normal_scale(self.weight * self.scale, a=0.2, mode='fan_in', nonlinearity='leaky_relu')

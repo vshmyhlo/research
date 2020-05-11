@@ -1,101 +1,26 @@
-import importlib.util
 import os
 
 import click
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
-from all_the_tools.metrics import Last, Mean, Metric
-from all_the_tools.torch.losses import softmax_cross_entropy
+from all_the_tools.config import load_config
+from all_the_tools.metrics import Last, Mean
 from all_the_tools.torch.utils import Saver
-from all_the_tools.transforms import Extract, ApplyTo
-from all_the_tools.utils import seed_python
+from sklearn.model_selection import StratifiedKFold
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from segmentation.dataset import ADE20KDataset
-from segmentation.model import UNet as Model
-from segmentation.transforms import ToTensor, RandomHorizontalFlip, Resize, RandomCrop
+from fix_match.utils import UDataset, XUDataLoader
+from tmp.randaugment import RandAugmentMC
 from utils import compute_nrow
 
-# TODO: maybe clip bad losses
-# TODO: ewa of loss/wights and use it to reweight
-# TODO: seresnext
-# TODO: predict full character
-# TODO: segment and classify
-# TODO: synthetic data
-# TODO: reweight loss based on how bad sample is
-# TODO: cutout
-# TODO: filter-response normalization
-# TODO: train multiple models and make noisy student/teacher
-# TODO: ewa optimization
-# TODO: tf_efficientnet_b1_ns
-# TODO: random crops
-# TODO: progressive crops
-# TODO: remove bad samples
-# TODO: crop sides
-# TODO: dropout
-# TODO: pseudo label
-# TODO: mixmatch
-# TODO: do not use OHEM samples
-# TODO: median ohem
-# TODO: online hard examples mininig
-# TODO: make label smoothing scale with loss
-# TODO: label smoothing
-# TODO: focal, weighting, lsep
-# TODO: no soft recall
-# TODO: self-mixup, self-cutmix
-# TODO: population based training
-# TODO: mixmatch
-# TODO: stn regularize to identity
-# TODO: pl
-# TODO: spatial transformer network !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# TODO: dropout
-# TODO: postprocess coocurence
-# TODO: manifold mixup
-# TODO: no soft f1 when trained with self-dist or LS
-# TODO: nonlinear heads for classes
-# TODO: lsep loss
-# TODO: cutmix: progressive
-# TODO: distillation
-# TODO: erosion/dilation
-# TODO: perspective
-# TODO: shear/scale and other affine
-
-
-# TODO: skeletonize and add noize
-# TODO: scale
-# TODO: mixmatch
-# TODO: shift
-# TODO: per-component metric
-# TODO: center images
-# TODO: synthetic data
-# TODO: ohem
-# TODO: ewa over distillation targets
-# TODO: ewa over distillation mixing coefficient
-
-NUM_CLASSES = 150 + 1
+NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-
-class IoU(Metric):
-    def compute(self):
-        print(self.intersection.shape, self.union.shape)
-        return (self.intersection / self.union).mean()
-
-    def update(self, input, target):
-        input = torch.eye(NUM_CLASSES, dtype=torch.bool, device=input.device)[input]
-        target = torch.eye(NUM_CLASSES, dtype=torch.bool, device=target.device)[target]
-
-        self.intersection += (input & target).sum((0, 1, 2)).data.cpu().numpy()
-        self.union += (input | target).sum((0, 1, 2)).data.cpu().numpy()
-
-    def reset(self):
-        self.intersection = 0
-        self.union = 0
 
 
 @click.command()
@@ -109,25 +34,44 @@ def main(config_path, **kwargs):
         config_path,
         **kwargs)
 
-    train_transform, eval_transform = build_transforms()
+    weak_transform, strong_transform, eval_transform = build_transforms()
+    x_indices, u_indices = build_x_u_split(
+        torchvision.datasets.CIFAR10(config.dataset_path, train=True, download=True),
+        config.train.num_labeled)
 
-    train_data_loader = torch.utils.data.DataLoader(
-        ADE20KDataset(config.dataset_path, subset='training', transform=train_transform),
-        batch_size=config.train.batch_size,
-        drop_last=True,
-        shuffle=True,
-        num_workers=config.workers,
-        worker_init_fn=worker_init_fn)
+    x_dataset = torch.utils.data.Subset(
+        torchvision.datasets.CIFAR10(config.dataset_path, train=True, transform=weak_transform, download=True),
+        x_indices)
+    u_dataset = UDataset(*[
+        torch.utils.data.Subset(
+            torchvision.datasets.CIFAR10(config.dataset_path, train=True, transform=u_transform, download=True),
+            u_indices)
+        for u_transform in [weak_transform, strong_transform]
+    ])
+    eval_dataset = torchvision.datasets.CIFAR10(
+        config.dataset_path, train=False, transform=eval_transform, download=True)
+    train_data_loader = XUDataLoader(
+        torch.utils.data.DataLoader(
+            x_dataset,
+            batch_size=config.train.x_batch_size,
+            drop_last=True,
+            shuffle=True,
+            num_workers=config.workers),
+        torch.utils.data.DataLoader(
+            u_dataset,
+            batch_size=config.train.u_batch_size,
+            drop_last=True,
+            shuffle=True,
+            num_workers=config.workers))
     eval_data_loader = torch.utils.data.DataLoader(
-        ADE20KDataset(config.dataset_path, subset='validation', transform=eval_transform),
+        eval_dataset,
         batch_size=config.eval.batch_size,
-        num_workers=config.workers,
-        worker_init_fn=worker_init_fn)
+        num_workers=config.workers)
 
-    model = Model(num_classes=NUM_CLASSES).to(DEVICE)
-    optimizer = build_optimizer(model.parameters(), config.train.optimizer)
-    scheduler = build_scheduler(
-        optimizer, config.train.scheduler, config.train.optimizer, config.epochs, len(train_data_loader))
+    model = torchvision.models.resnet50(num_classes=NUM_CLASSES, pretrained=False).to(DEVICE)
+    model.apply(weights_init)
+    optimizer = build_optimizer(model.parameters(), config)
+    scheduler = build_scheduler(optimizer, config, len(train_data_loader))
     saver = Saver({
         'model': model,
         'optimizer': optimizer,
@@ -137,211 +81,196 @@ def main(config_path, **kwargs):
         saver.load(config.restore_path, keys=['model'])
 
     for epoch in range(1, config.epochs + 1):
+        # optimizer.train()
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
+        # optimizer.eval()
+        if epoch % config.log_interval != 0:
+            continue
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
         saver.save(
             os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
             epoch=epoch)
 
 
-def worker_init_fn(_):
-    seed_python(torch.initial_seed() % 2**32)
+def build_x_u_split(dataset, num_labeled):
+    targets = torch.tensor([target for _, target in tqdm(dataset, 'loading split')])
 
+    ratio = len(dataset) // num_labeled
 
-def compute_loss(input, target):
-    ce = softmax_cross_entropy(input, target, dim=1)
-    ce = ce.mean((0, 1, 2))
+    u_indices, x_indices = next(StratifiedKFold(ratio, shuffle=True, random_state=42).split(targets, targets))
+    u_indices, x_indices = torch.tensor(u_indices), torch.tensor(x_indices)
 
-    loss = ce
-
-    return loss
+    return x_indices, u_indices
 
 
 def build_optimizer(parameters, config):
-    if config.type == 'sgd':
+    if config.train.opt.type == 'sgd':
         optimizer = torch.optim.SGD(
             parameters,
-            config.lr,
-            momentum=config.momentum,
-            weight_decay=config.weight_decay,
+            config.train.opt.lr,
+            momentum=config.train.opt.momentum,
+            weight_decay=config.train.opt.weight_decay,
             nesterov=True)
-    elif config.type == 'rmsprop':
+    elif config.train.opt.type == 'rmsprop':
         optimizer = torch.optim.RMSprop(
             parameters,
-            config.lr,
-            momentum=config.momentum,
-            weight_decay=config.weight_decay)
-    elif config.type == 'adam':
+            config.train.opt.lr,
+            momentum=config.train.opt.momentum,
+            weight_decay=config.train.opt.weight_decay)
+    elif config.train.opt.type == 'adam':
         optimizer = torch.optim.Adam(
             parameters,
-            config.lr,
-            weight_decay=config.weight_decay)
+            config.train.opt.lr,
+            weight_decay=config.train.opt.weight_decay)
     else:
-        raise AssertionError('invalid optimizer {}'.format(config.type))
+        raise AssertionError('invalid optimizer {}'.format(config.train.opt.type))
+
+    # optimizer = EWA(optimizer, momentum=0.999, num_steps=1)
 
     return optimizer
 
 
-def build_scheduler(optimizer, config, optimizer_config, epochs, steps_per_epoch):
-    if config.type == 'cosine':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epochs * steps_per_epoch)
-    elif config.type == 'step':
+def build_scheduler(optimizer, config, steps_per_epoch):
+    if config.train.sched.type == 'cosine':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.epochs * steps_per_epoch)
+    elif config.train.sched.type == 'step':
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer,
-            step_size=(epochs * steps_per_epoch) // 3,
+            step_size=(config.epochs * steps_per_epoch) // 3,
+            gamma=0.1)
+    elif config.train.sched.type == 'multistep':
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            [epoch * steps_per_epoch for epoch in config.train.sched.epochs],
             gamma=0.1)
     else:
-        raise AssertionError('invalid scheduler {}'.format(config.type))
+        raise AssertionError('invalid scheduler {}'.format(config.train.sched.type))
 
     return scheduler
 
 
-def load_config(config_path, **kwargs):
-    spec = importlib.util.spec_from_file_location('config', config_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    config = module.config
-    for k in kwargs:
-        setattr(config, k, kwargs[k])
-
-    return config
-
-
-def image_one_hot(input, n, dtype=torch.float):
-    return torch.eye(n, dtype=dtype, device=input.device)[input].permute(0, 3, 1, 2)
-
-
-def draw_masks(input):
-    colors = np.random.RandomState(42).uniform(0.25, 1., size=(NUM_CLASSES, 3))
-    colors = torch.tensor(colors, dtype=torch.float).to(input.device)
-    colors[0, :] = 0.
-    if NUM_CLASSES == 2:
-        colors[1, :] = 1.
-
-    input = colors[input]
-    input = input.squeeze(1).permute(0, 3, 1, 2)
-
-    return input
-
-
 def denormalize(input):
-    mean = torch.tensor([0.485, 0.456, 0.406], dtype=input.dtype, device=input.device).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225], dtype=input.dtype, device=input.device).view(1, 3, 1, 1)
-    input = input * std + mean
+    input = input * 0.25 + 0.5
 
     return input
 
 
 def build_transforms():
-    pre_process = Resize(256)
-    post_process = T.Compose([
-        ToTensor(NUM_CLASSES),
-        ApplyTo(
-            'image',
-            T.Normalize(
-                mean=(0.485, 0.456, 0.406),
-                std=(0.229, 0.224, 0.225))),
-        Extract(['image', 'mask']),
-    ])
-    train_transform = T.Compose([
-        pre_process,
-        RandomCrop(256),
-        RandomHorizontalFlip(),
-        # ApplyTo('image', T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3)),
-        post_process,
-    ])
-    eval_transform = T.Compose([
-        pre_process,
-        post_process,
+    to_tensor_and_norm = T.Compose([
+        T.ToTensor(),
+        T.Normalize(mean=[0.5], std=[0.25]),
     ])
 
-    return train_transform, eval_transform
+    weak_transforms = T.Compose([
+        T.RandomHorizontalFlip(),
+        T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
+        to_tensor_and_norm,
+    ])
+    strong_transform = T.Compose([
+        T.RandomHorizontalFlip(),
+        T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
+        RandAugmentMC(n=2, m=10),
+        to_tensor_and_norm,
+    ])
+    eval_transform = T.Compose([
+        to_tensor_and_norm,
+    ])
+
+    return weak_transforms, strong_transform, eval_transform
 
 
 def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
-    writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
     metrics = {
-        'loss': Mean(),
+        'x_loss': Mean(),
+        'u_loss': Mean(),
+        'u_loss_mask': Mean(),
         'lr': Last(),
     }
 
     model.train()
-    for images, targets in tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
-        images, targets = images.to(DEVICE), targets.to(DEVICE)
-        targets = image_one_hot(targets, NUM_CLASSES)
+    for (x_w_images, x_targets), (u_w_images, u_s_images) in \
+            tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
+        x_w_images, x_targets, u_w_images, u_s_images = \
+            x_w_images.to(DEVICE), x_targets.to(DEVICE), u_w_images.to(DEVICE), u_s_images.to(DEVICE)
 
-        logits = model(images)
-        loss = compute_loss(input=logits, target=targets)
+        x_w_logits, u_w_logits, u_s_logits = \
+            model(torch.cat([x_w_images, u_w_images, u_s_images], 0)) \
+                .split([x_w_images.size(0), u_w_images.size(0), u_s_images.size(0)])
 
-        metrics['loss'].update(loss.data.cpu().numpy())
+        # x ############################################################################################################
+        x_loss = F.cross_entropy(input=x_w_logits, target=x_targets, reduction='none')
+        metrics['x_loss'].update(x_loss.data.cpu().numpy())
+
+        # u ############################################################################################################
+        u_loss_mask, u_targets = F.softmax(u_w_logits.detach(), 1).max(1)
+        u_loss_mask = (u_loss_mask >= config.train.tau).float()
+
+        u_loss = u_loss_mask * F.cross_entropy(input=u_s_logits, target=u_targets, reduction='none')
+        metrics['u_loss'].update(u_loss.data.cpu().numpy())
+        metrics['u_loss_mask'].update(u_loss_mask.data.cpu().numpy())
+
+        # opt step #####################################################################################################
         metrics['lr'].update(np.squeeze(scheduler.get_lr()))
 
         optimizer.zero_grad()
-        loss.mean().backward()
+        (x_loss.mean() + config.train.u_weight * u_loss.mean()).backward()
         optimizer.step()
         scheduler.step()
 
-    with torch.no_grad():
-        mask_true = F.interpolate(draw_masks(targets.argmax(1, keepdim=True)), scale_factor=1)
-        mask_pred = F.interpolate(draw_masks(logits.argmax(1, keepdim=True)), scale_factor=1)
+    if epoch % config.log_interval != 0:
+        return
 
+    writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
+    with torch.no_grad():
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image('images', torchvision.utils.make_grid(
-            denormalize(images), nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        writer.add_image('mask_true', torchvision.utils.make_grid(
-            mask_true, nrow=compute_nrow(mask_true), normalize=True), global_step=epoch)
-        writer.add_image('mask_pred', torchvision.utils.make_grid(
-            mask_pred, nrow=compute_nrow(mask_pred), normalize=True), global_step=epoch)
-        writer.add_image('images_true', torchvision.utils.make_grid(
-            denormalize(images) + mask_true, nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        writer.add_image('images_pred', torchvision.utils.make_grid(
-            denormalize(images) + mask_pred, nrow=compute_nrow(images), normalize=True), global_step=epoch)
+        writer.add_image('x_w_images', torchvision.utils.make_grid(
+            denormalize(x_w_images), nrow=compute_nrow(x_w_images), normalize=True), global_step=epoch)
+        writer.add_image('u_w_images', torchvision.utils.make_grid(
+            denormalize(u_w_images), nrow=compute_nrow(u_w_images), normalize=True), global_step=epoch)
+        writer.add_image('u_s_images', torchvision.utils.make_grid(
+            denormalize(u_s_images), nrow=compute_nrow(u_s_images), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
 
 
 def eval_epoch(model, data_loader, epoch, config):
-    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     metrics = {
-        'loss': Mean(),
-        'iou': IoU(),
+        'x_loss': Mean(),
+        'accuracy': Mean(),
     }
 
     with torch.no_grad():
         model.eval()
-        for images, targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
-            images, targets = images.to(DEVICE), targets.to(DEVICE)
-            targets = image_one_hot(targets, NUM_CLASSES)
+        for x_images, x_targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
+            x_images, x_targets = x_images.to(DEVICE), x_targets.to(DEVICE)
 
-            logits = model(images)
-            loss = compute_loss(input=logits, target=targets)
+            x_logits = model(x_images)
+            x_loss = F.cross_entropy(input=x_logits, target=x_targets, reduction='none')
 
-            metrics['loss'].update(loss.data.cpu().numpy())
-            metrics['iou'].update(
-                input=logits.argmax(1),
-                target=targets.argmax(1))
+            metrics['x_loss'].update(x_loss.data.cpu().numpy())
+            metrics['accuracy'].update((x_logits.argmax(-1) == x_targets).float().data.cpu().numpy())
 
+    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():
-        mask_true = F.interpolate(draw_masks(targets.argmax(1, keepdim=True)), scale_factor=1)
-        mask_pred = F.interpolate(draw_masks(logits.argmax(1, keepdim=True)), scale_factor=1)
-
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image('images', torchvision.utils.make_grid(
-            denormalize(images), nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        writer.add_image('mask_true', torchvision.utils.make_grid(
-            mask_true, nrow=compute_nrow(mask_true), normalize=True), global_step=epoch)
-        writer.add_image('mask_pred', torchvision.utils.make_grid(
-            mask_pred, nrow=compute_nrow(mask_pred), normalize=True), global_step=epoch)
-        writer.add_image('images_true', torchvision.utils.make_grid(
-            denormalize(images) + mask_true, nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        writer.add_image('images_pred', torchvision.utils.make_grid(
-            denormalize(images) + mask_pred, nrow=compute_nrow(images), normalize=True), global_step=epoch)
+        writer.add_image('x_images', torchvision.utils.make_grid(
+            denormalize(x_images), nrow=compute_nrow(x_images), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
+
+
+def weights_init(m):
+    if isinstance(m, (nn.Conv2d,)):
+        nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+    elif isinstance(m, (nn.BatchNorm2d,)):
+        nn.init.ones_(m.weight)
+        nn.init.zeros_(m.bias)
 
 
 if __name__ == '__main__':
