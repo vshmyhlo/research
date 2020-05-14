@@ -234,6 +234,8 @@ def train_epoch(model, data_loader, opt_teacher, opt_student, sched_teacher, sch
                 grad_norm(p.grad for p in model.teacher.parameters()).data.cpu().numpy())
             sched_teacher.step()
 
+            # copy student weights #####################################################################################
+
             with torch.no_grad():
                 for p, p_prime in zip(model.student.parameters(), h_model_student.parameters()):
                     p.copy_(p_prime)
