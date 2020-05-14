@@ -2,14 +2,14 @@ import os
 
 import click
 import higher
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
-from all_the_tools.metrics import Last, Mean
+from all_the_tools.metrics import Mean, Last
 from all_the_tools.torch.utils import Saver
 from sklearn.model_selection import StratifiedKFold
 from tensorboardX import SummaryWriter
@@ -17,20 +17,14 @@ from tqdm import tqdm
 
 from mpl_torch.model import Model
 from mpl_torch.utils import XUDataLoader
-from utils import compute_nrow
+from utils import WarmupCosineAnnealingLR
+from utils import compute_nrow, one_hot
 
 NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
-def one_hot(input, n):
-    return torch.eye(n, device=input.device)[input]
-
-
-def cross_entropy(input, target, eps=1e-8):
-    assert input.size() == target.size()
-
-    return -torch.sum(target * torch.log(input + eps), -1)
+# TODO: pretrain
 
 
 @click.command()
@@ -77,14 +71,16 @@ def main(config_path, **kwargs):
         num_workers=config.workers)
 
     model = nn.ModuleDict({
-        'teacher': Model(NUM_CLASSES),
-        'student': Model(NUM_CLASSES),
+        'teacher': Model(NUM_CLASSES, config.train.teacher.dropout),
+        'student': Model(NUM_CLASSES, config.train.student.dropout),
     }).to(DEVICE)
     model.apply(weights_init)
 
-    opt_teacher = build_optimizer(model.teacher.parameters(), config)
-    opt_student = build_optimizer(model.student.parameters(), config)
-    # scheduler = build_scheduler(optimizer, config, len(train_data_loader))
+    opt_teacher = build_optimizer(model.teacher.parameters(), config.train.teacher)
+    opt_student = build_optimizer(model.student.parameters(), config.train.student)
+
+    sched_teacher = build_scheduler(opt_teacher, config, len(train_data_loader))
+    sched_student = build_scheduler(opt_student, config, len(train_data_loader))
 
     saver = Saver({
         'model': model,
@@ -93,15 +89,28 @@ def main(config_path, **kwargs):
         saver.load(config.restore_path, keys=['model'])
 
     for epoch in range(1, config.epochs + 1):
-        train_epoch(model, train_data_loader, opt_teacher, opt_student, epoch=epoch, config=config)
+        train_epoch(
+            model,
+            train_data_loader,
+            opt_teacher=opt_teacher,
+            opt_student=opt_student,
+            sched_teacher=sched_teacher,
+            sched_student=sched_student,
+            epoch=epoch,
+            config=config)
         if epoch % config.log_interval != 0:
             continue
-        eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        eval_epoch(
+            model,
+            eval_data_loader,
+            epoch=epoch,
+            config=config)
         saver.save(
             os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
             epoch=epoch)
 
 
+# FIXME:
 def build_x_u_split(dataset, num_labeled):
     targets = torch.tensor([target for _, target in tqdm(dataset, 'loading split')])
 
@@ -114,35 +123,29 @@ def build_x_u_split(dataset, num_labeled):
 
 
 def build_optimizer(parameters, config):
-    if config.train.opt.type == 'sgd':
+    if config.opt.type == 'sgd':
         optimizer = torch.optim.SGD(
             parameters,
-            config.train.opt.lr,
-            momentum=config.train.opt.momentum,
-            weight_decay=config.train.opt.weight_decay,
+            config.opt.lr,
+            momentum=config.opt.momentum,
+            weight_decay=config.opt.weight_decay,
             nesterov=True)
-    elif config.train.opt.type == 'rmsprop':
-        optimizer = torch.optim.RMSprop(
-            parameters,
-            config.train.opt.lr,
-            momentum=config.train.opt.momentum,
-            weight_decay=config.train.opt.weight_decay)
-    elif config.train.opt.type == 'adam':
-        optimizer = torch.optim.Adam(
-            parameters,
-            config.train.opt.lr,
-            weight_decay=config.train.opt.weight_decay)
     else:
-        raise AssertionError('invalid optimizer {}'.format(config.train.opt.type))
-
-    # optimizer = EWA(optimizer, momentum=0.999, num_steps=1)
+        raise AssertionError('invalid optimizer {}'.format(config.opt.type))
 
     return optimizer
 
 
 def build_scheduler(optimizer, config, steps_per_epoch):
     if config.train.sched.type == 'cosine':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.epochs * steps_per_epoch)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            config.epochs * steps_per_epoch)
+    elif config.train.sched.type == 'warmup_cosine':
+        scheduler = WarmupCosineAnnealingLR(
+            optimizer,
+            epoch_warmup=int(config.epochs * steps_per_epoch * 0.1),
+            epoch_max=config.epochs * steps_per_epoch)
     elif config.train.sched.type == 'step':
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer,
@@ -184,11 +187,15 @@ def build_transforms():
     return x_transform, u_transform, eval_transform
 
 
-def train_epoch(model, data_loader, opt_teacher, opt_student, epoch, config):
+def train_epoch(model, data_loader, opt_teacher, opt_student, sched_teacher, sched_student, epoch, config):
     metrics = {
         'teacher/loss': Mean(),
+        'teacher/grad_norm': Mean(),
+        'teacher/lr': Last(),
+
         'student/loss': Mean(),
-        'lr': Last(),
+        'student/grad_norm': Mean(),
+        'student/lr': Last(),
     }
 
     model.train()
@@ -198,18 +205,38 @@ def train_epoch(model, data_loader, opt_teacher, opt_student, epoch, config):
 
         with higher.innerloop_ctx(model.student, opt_student) as (h_model_student, h_opt_student):
             # student ##################################################################################################
-            loss_student = cross_entropy(input=h_model_student(u_image), target=model.teacher(u_image)).mean()
 
-            # h_opt_student.zero_grad()
-            h_opt_student.step(loss_student.mean())
+            loss_student = cross_entropy(input=h_model_student(u_image), target=model.teacher(u_image)).mean()
+            metrics['student/loss'].update(loss_student.data.cpu().numpy())
+            metrics['student/lr'].update(np.squeeze(sched_student.get_last_lr()))
+
+            def grad_callback(grads):
+                metrics['student/grad_norm'].update(
+                    grad_norm(grads).data.cpu().numpy())
+
+                return grads
+
+            h_opt_student.step(loss_student.mean(), grad_callback=grad_callback)
+            sched_student.step()
 
             # student ##################################################################################################
+
             loss_teacher = cross_entropy(input=model.teacher(x_image), target=one_hot(x_target, NUM_CLASSES)).mean() + \
                            cross_entropy(input=h_model_student(x_image), target=one_hot(x_target, NUM_CLASSES)).mean()
-           
+
+            metrics['teacher/loss'].update(loss_teacher.data.cpu().numpy())
+            metrics['teacher/lr'].update(np.squeeze(sched_teacher.get_last_lr()))
+
             opt_teacher.zero_grad()
             loss_teacher.mean().backward()
             opt_teacher.step()
+            metrics['teacher/grad_norm'].update(
+                grad_norm(p.grad for p in model.teacher.parameters()).data.cpu().numpy())
+            sched_teacher.step()
+
+            with torch.no_grad():
+                for p, p_prime in zip(model.student.parameters(), h_model_student.parameters()):
+                    p.copy_(p_prime)
 
     if epoch % config.log_interval != 0:
         return
@@ -222,8 +249,6 @@ def train_epoch(model, data_loader, opt_teacher, opt_student, epoch, config):
             denormalize(x_image), nrow=compute_nrow(x_image), normalize=True), global_step=epoch)
         writer.add_image('u_image', torchvision.utils.make_grid(
             denormalize(u_image), nrow=compute_nrow(u_image), normalize=True), global_step=epoch)
-        writer.add_image('u_s_images', torchvision.utils.make_grid(
-            denormalize(u_s_images), nrow=compute_nrow(u_s_images), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
@@ -231,34 +256,42 @@ def train_epoch(model, data_loader, opt_teacher, opt_student, epoch, config):
 
 def eval_epoch(model, data_loader, epoch, config):
     metrics = {
-        'x_loss': Mean(),
-        'accuracy': Mean(),
+        'teacher/accuracy': Mean(),
+        'teacher/entropy': Mean(),
+
+        'student/accuracy': Mean(),
+        'student/entropy': Mean(),
     }
 
     with torch.no_grad():
         model.eval()
-        for x_images, x_targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
-            x_images, x_targets = x_images.to(DEVICE), x_targets.to(DEVICE)
+        for x_image, x_target in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
+            x_image, x_target = x_image.to(DEVICE), x_target.to(DEVICE)
 
-            x_logits = model(x_images)
-            x_loss = F.cross_entropy(input=x_logits, target=x_targets, reduction='none')
+            probs_teacher = model.teacher(x_image)
+            probs_student = model.student(x_image)
 
-            metrics['x_loss'].update(x_loss.data.cpu().numpy())
-            metrics['accuracy'].update((x_logits.argmax(-1) == x_targets).float().data.cpu().numpy())
+            metrics['teacher/entropy'].update(entropy(probs_teacher).data.cpu().numpy())
+            metrics['student/entropy'].update(entropy(probs_student).data.cpu().numpy())
+
+            metrics['teacher/accuracy'].update(
+                (probs_teacher.argmax(-1) == x_target).float().data.cpu().numpy())
+            metrics['student/accuracy'].update(
+                (probs_student.argmax(-1) == x_target).float().data.cpu().numpy())
 
     writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image('x_images', torchvision.utils.make_grid(
-            denormalize(x_images), nrow=compute_nrow(x_images), normalize=True), global_step=epoch)
+        writer.add_image('x_image', torchvision.utils.make_grid(
+            denormalize(x_image), nrow=compute_nrow(x_image), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
 
 
 def weights_init(m):
-    if isinstance(m, (nn.Conv2d,)):
+    if isinstance(m, (nn.Conv2d, nn.Linear,)):
         nn.init.kaiming_normal_(m.weight)
         if m.bias is not None:
             nn.init.zeros_(m.bias)
@@ -267,5 +300,77 @@ def weights_init(m):
         nn.init.zeros_(m.bias)
 
 
+def grad_norm(grads, norm_type=2):
+    return torch.norm(torch.stack([torch.norm(g.detach(), norm_type) for g in grads]), norm_type)
+
+
+def cross_entropy(input, target, eps=1e-8):
+    assert input.size() == target.size()
+
+    return -torch.sum(target * torch.log(input + eps), -1)
+
+
+def entropy(input):
+    return cross_entropy(input, input)
+
+
 if __name__ == '__main__':
     main()
+
+
+def tmp():
+    teacher_optimizer = ...
+    student_optimizer = ...
+
+    with higher.innerloop_ctx(student, student_optimizer) as (smodel, sdiffopt):
+
+        student.train()
+        teacher.train()
+
+        teacher_logits = teacher(unsupervised_batch)
+        student_logits = smodel(unsupervised_batch)
+        distillation_loss = soft_ce(
+            torch.log_softmax(student_logits, dim=1),
+            torch.softmax(teacher_logits, dim=1),
+        )
+        print("Distillation loss:", distillation_loss.item())
+
+        sdiffopt.step(distillation_loss)
+
+        student_logits = smodel(student_data)
+        student_logits.squeeze_(dim=1)
+        student_loss = ce(student_logits, student_labels)
+
+        print("Student loss:", student_loss.item())
+
+        student_loss.backward()
+        print(
+            "Teacher grad: {} +- {}".format(
+                teacher.fc1.weight.grad.mean(), teacher.fc1.weight.grad.std()
+            )
+        )
+        teacher_optimizer.step()
+
+        if step % supervised_teacher_update_freq == 0:
+            supervise_teacher(teacher_data, teacher_labels)
+
+        clear_output(wait=True)
+        with torch.no_grad():
+            student.eval()
+            teacher.eval()
+            plot_predictions(
+                (
+                    unsupervised_data.numpy(),
+                    student(unsupervised_data).numpy().argmax(1),
+                    "Student",
+                ),
+                (
+                    unsupervised_data.numpy(),
+                    teacher(unsupervised_data).numpy().argmax(1),
+                    "Teacher",
+                ),
+            )
+
+        with torch.no_grad():
+            for old_p, new_p in zip(student.parameters(), smodel.parameters()):
+                old_p.copy_(new_p)

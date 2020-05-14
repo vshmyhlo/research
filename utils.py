@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import torch
+import torch.optim
 import torchvision
 from matplotlib import pyplot as plt
 
@@ -54,3 +55,30 @@ def plot_decision_boundary(x, y, predict, colors=COLORS):
     plt.scatter(x[y == 1][:, 0], x[y == 1][:, 1], s=5, c=colors[1])
 
     return fig
+
+
+def one_hot(input, n, dtype=torch.float):
+    return torch.eye(n, dtype=dtype, device=input.device)[input]
+
+
+class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.LambdaLR):
+    def __init__(self, optimizer, epoch_warmup, epoch_max):
+        def f(epoch):
+            if epoch < epoch_warmup:
+                return epoch / epoch_warmup
+            else:
+                return (np.cos((epoch - epoch_warmup) / (epoch_max - epoch_warmup) * np.pi) + 1) / 2
+
+        super().__init__(optimizer, f)
+
+
+def clip_grad_norm(grads, max_norm, norm_type=2):
+    grads = list(filter(lambda grad: grad is not None, grads))
+    max_norm = float(max_norm)
+    norm_type = float(norm_type)
+    total_norm = torch.norm(torch.stack([torch.norm(grad.detach(), norm_type) for grad in grads]), norm_type)
+    clip_coef = max_norm / (total_norm + 1e-6)
+    if clip_coef < 1:
+        grads = [grad * clip_coef for grad in grads]
+
+    return grads
