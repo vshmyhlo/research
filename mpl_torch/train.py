@@ -219,7 +219,7 @@ def train_epoch(model, data_loader, opt_teacher, opt_student, sched_teacher, sch
             h_opt_student.step(loss_student.mean(), grad_callback=grad_callback)
             sched_student.step()
 
-            # student ##################################################################################################
+            # teacher ##################################################################################################
 
             loss_teacher = cross_entropy(input=model.teacher(x_image), target=one_hot(x_target, NUM_CLASSES)).mean() + \
                            cross_entropy(input=h_model_student(x_image), target=one_hot(x_target, NUM_CLASSES)).mean()
