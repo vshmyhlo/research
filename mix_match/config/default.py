@@ -1,6 +1,6 @@
 from all_the_tools.config import Config as C
 
-k = 0.25
+k = 0.5
 epochs = 1000
 batch_size = 128
 
@@ -14,13 +14,12 @@ config = C(
         batch_size=int(batch_size * k),
         num_labeled=4000,
         mix_match=C(
-            weight_u=25.,
+            weight_u=1.,
             temp=0.5,
-            alpha=0.75,
-        ),
+            alpha=0.75),
         opt=C(
             type='sgd',
-            lr=1e-2 * k,
+            lr=0.1 * k,
             momentum=0.9,
             weight_decay=1e-4),
         sched=C(
