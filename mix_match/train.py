@@ -16,9 +16,7 @@ from tqdm import tqdm
 
 from fix_match.utils import UDataset, XUDataLoader
 from mix_match.model import Model
-from utils import compute_nrow
-from utils import entropy
-from utils import one_hot
+from utils import WarmupCosineAnnealingLR, compute_nrow, entropy, one_hot
 
 NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -75,7 +73,7 @@ def main(config_path, **kwargs):
         num_workers=config.workers)
 
     # build model ######################################################################################################
-    model = Model(NUM_CLASSES).to(DEVICE)
+    model = Model(config.model, NUM_CLASSES).to(DEVICE)
     model.apply(weights_init)
     optimizer = build_optimizer(model.parameters(), config)
     scheduler = build_scheduler(optimizer, config, len(train_data_loader))
@@ -135,6 +133,11 @@ def build_optimizer(parameters, config):
 def build_scheduler(optimizer, config, steps_per_epoch):
     if config.train.sched.type == 'cosine':
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.epochs * steps_per_epoch)
+    elif config.train.sched.type == 'warmup_cosine':
+        scheduler = WarmupCosineAnnealingLR(
+            optimizer,
+            epoch_warmup=config.epochs_warmup * steps_per_epoch,
+            epoch_max=config.epochs * steps_per_epoch)
     elif config.train.sched.type == 'step':
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer,
@@ -177,10 +180,12 @@ def build_transforms():
 
 
 def compute_loss_x(input, target):
+    assert input.size() == input.size()
     return -torch.sum(target * torch.log(input + 1e-8), 1)
 
 
 def compute_loss_u(input, target):
+    assert input.size() == input.size()
     return ((input - target)**2).mean(1)
 
 
@@ -280,7 +285,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 
         # opt step #####################################################################################################
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
-        weight_u = config.train.weight_u * min(((epoch - 1) * len(data_loader) / 16000), 1)
+        weight_u = config.train.weight_u * min((epoch - 1) / config.epochs_warmup, 1.)
         metrics['weight/u'].update(weight_u)
 
         optimizer.zero_grad()
@@ -319,6 +324,8 @@ def eval_epoch(model, data_loader, epoch, config):
 
             metrics['entropy'].update(entropy(probs_x).data.cpu().numpy())
             metrics['accuracy'].update((probs_x.argmax(-1) == targets_x).float().data.cpu().numpy())
+
+        print(probs_x.argmax(-1))
 
     writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():

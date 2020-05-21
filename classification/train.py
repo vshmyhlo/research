@@ -14,6 +14,7 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from classification.model import Model
 from utils import compute_nrow
 
 NUM_CLASSES = 10
@@ -44,7 +45,7 @@ def main(config_path, **kwargs):
         batch_size=config.eval.batch_size,
         num_workers=config.workers)
 
-    model = torchvision.models.resnet50(num_classes=NUM_CLASSES, pretrained=False).to(DEVICE)
+    model = Model(config.model, NUM_CLASSES).to(DEVICE)
     model.apply(weights_init)
     optimizer = build_optimizer(model.parameters(), config)
     scheduler = build_scheduler(optimizer, config, len(train_data_loader))
@@ -58,6 +59,8 @@ def main(config_path, **kwargs):
 
     for epoch in range(1, config.epochs + 1):
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
+        if epoch % config.log_interval != 0:
+            continue
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
         saver.save(
             os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
@@ -90,14 +93,7 @@ def build_optimizer(parameters, config):
 
 
 def build_scheduler(optimizer, config, steps_per_epoch):
-    if config.train.sched.type == 'cosine':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.epochs * steps_per_epoch)
-    elif config.train.sched.type == 'step':
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=(config.epochs * steps_per_epoch) // 3,
-            gamma=0.1)
-    elif config.train.sched.type == 'multistep':
+    if config.train.sched.type == 'multistep':
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
             optimizer,
             [epoch * steps_per_epoch for epoch in config.train.sched.epochs],
@@ -115,7 +111,7 @@ def denormalize(input):
 
 
 def build_transforms():
-    def assert_shape(input):
+    def validate_size(input):
         assert input.size() == (3, 32, 32)
 
         return input
@@ -123,11 +119,11 @@ def build_transforms():
     to_tensor_and_norm = T.Compose([
         T.ToTensor(),
         T.Normalize(mean=[0.5], std=[0.25]),
-        assert_shape,
+        validate_size,
     ])
     train_transform = T.Compose([
         T.RandomHorizontalFlip(),
-        T.RandomCrop(size=32, padding=4, padding_mode='reflect'),
+        T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
         T.ColorJitter(0.3, 0.3, 0.3),
         to_tensor_and_norm,
         T.RandomErasing(),
@@ -159,6 +155,9 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         loss.mean().backward()
         optimizer.step()
         scheduler.step()
+
+    if epoch % config.log_interval != 0:
+        return
 
     writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
     with torch.no_grad():
