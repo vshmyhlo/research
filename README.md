@@ -1,5 +1,7 @@
 * [Video Frame Interpolation via Residue Refinement (RRIN)](./rrin)
 * [Semantic Segmentation](./segmentation)
+* [Image Classification](./classification)
 * [Meta Pseudo Labels](./mpl_tf) (TensorFlow, TwoMoonds dataset)
-* [Meta Pseudo Labels](./mpl_torch) (PyTorch, CIFAR10 SSL)
+* [Meta Pseudo Labels](./mpl_torch) (PyTorch, CIFAR-10 SSL)
+* [MixMatch](./mix_match) (PyTorch, CIFAR-10 SSL)
 * [StyleGAN2](./stylegan_tf) (TensorFlow)

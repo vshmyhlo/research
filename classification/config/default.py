@@ -1,7 +1,7 @@
 from all_the_tools.config import Config as C
 
-k = 0.5
 epochs = 100
+k = 0.5
 
 config = C(
     seed=42,

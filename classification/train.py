@@ -19,6 +19,8 @@ from utils import compute_nrow
 
 NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
+STD = torch.tensor([0.2470, 0.2435, 0.2616])
 
 
 @click.command()
@@ -104,12 +106,6 @@ def build_scheduler(optimizer, config, steps_per_epoch):
     return scheduler
 
 
-def denormalize(input):
-    input = input * 0.25 + 0.5
-
-    return input
-
-
 def build_transforms():
     def validate_size(input):
         assert input.size() == (3, 32, 32)
@@ -118,15 +114,13 @@ def build_transforms():
 
     to_tensor_and_norm = T.Compose([
         T.ToTensor(),
-        T.Normalize(mean=[0.5], std=[0.25]),
+        T.Normalize(mean=MEAN, std=STD),
         validate_size,
     ])
     train_transform = T.Compose([
         T.RandomHorizontalFlip(),
         T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
-        T.ColorJitter(0.3, 0.3, 0.3),
         to_tensor_and_norm,
-        T.RandomErasing(),
     ])
     eval_transform = T.Compose([
         to_tensor_and_norm,
@@ -164,7 +158,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image('images', torchvision.utils.make_grid(
-            denormalize(images), nrow=compute_nrow(images), normalize=True), global_step=epoch)
+            images, nrow=compute_nrow(images), normalize=True), global_step=epoch)
         writer.add_histogram('params', flatten_weights(model.parameters()), global_step=epoch)
 
     writer.flush()
@@ -193,7 +187,7 @@ def eval_epoch(model, data_loader, epoch, config):
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image('images', torchvision.utils.make_grid(
-            denormalize(images), nrow=compute_nrow(images), normalize=True), global_step=epoch)
+            images, nrow=compute_nrow(images), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
