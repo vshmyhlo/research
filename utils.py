@@ -82,3 +82,11 @@ def clip_grad_norm(grads, max_norm, norm_type=2):
         grads = [grad * clip_coef for grad in grads]
 
     return grads
+
+
+def cross_entropy(input, target, dim=-1, eps=1e-8):
+    return -torch.sum(target * torch.log(input + eps), dim=dim)
+
+
+def entropy(input):
+    return cross_entropy(input, input)

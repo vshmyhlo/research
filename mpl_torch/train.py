@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from mpl_torch.model import Model
 from mpl_torch.utils import XUDataLoader
-from utils import WarmupCosineAnnealingLR
+from utils import WarmupCosineAnnealingLR, cross_entropy, entropy
 from utils import compute_nrow, one_hot
 
 NUM_CLASSES = 10
@@ -304,16 +304,6 @@ def weights_init(m):
 
 def grad_norm(grads, norm_type=2):
     return torch.norm(torch.stack([torch.norm(g.detach(), norm_type) for g in grads]), norm_type)
-
-
-def cross_entropy(input, target, eps=1e-8):
-    assert input.size() == target.size()
-
-    return -torch.sum(target * torch.log(input + eps), -1)
-
-
-def entropy(input):
-    return cross_entropy(input, input)
 
 
 if __name__ == '__main__':

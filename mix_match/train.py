@@ -17,6 +17,7 @@ from tqdm import tqdm
 from fix_match.utils import UDataset, XUDataLoader
 from mix_match.model import Model
 from utils import compute_nrow
+from utils import entropy
 from utils import one_hot
 
 NUM_CLASSES = 10
@@ -162,12 +163,12 @@ def build_transforms():
         T.Normalize(mean=[0.5], std=[0.25]),
     ])
 
-    transform_x = T.Compose([
+    transform_x = transform_u = T.Compose([
         T.RandomHorizontalFlip(),
         T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
+        T.ColorJitter(0.3, 0.3, 0.3),
         to_tensor_and_norm,
     ])
-    transform_u = transform_x
     eval_transform = T.Compose([
         to_tensor_and_norm,
     ])
@@ -212,20 +213,23 @@ def mix_match(x, u, model, config):
     images_u_0, images_u_1 = u
     del x, u
 
+    # predict u targets ################################################################################################
     images_u = torch.cat([images_u_0, images_u_1], 0)
-    targets_u = model(images_u).detach()
-    targets_u_0, targets_u_1 = targets_u.split([images_u_0.size(0), images_u_1.size(0)])
+    targets_u_0, targets_u_1 = \
+        model(images_u).detach() \
+            .split([images_u_0.size(0), images_u_1.size(0)])
 
     targets_u = sharpen((targets_u_0 + targets_u_1) / 2, t=config.train.temp)
     targets_u = targets_u.repeat(2, 1)
 
-    # shuffle ##############################################################################################
+    # shuffle ##########################################################################################################
     images_w = torch.cat([images_x, images_u], 0)
     targets_w = torch.cat([targets_x, targets_u], 0)
     images_w, targets_w = shuffle(images=images_w, targets=targets_w)
     images_w_0, images_w_1 = images_w.split([images_x.size(0), images_u.size(0)])
     targets_w_0, targets_w_1 = targets_w.split([targets_x.size(0), targets_u.size(0)])
 
+    # mix-up ###########################################################################################################
     images_x, targets_x = mix_up(
         left=(images_x, targets_x),
         right=(images_w_0, targets_w_0),
@@ -276,7 +280,6 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 
         # opt step #####################################################################################################
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
-
         weight_u = config.train.weight_u * min(((epoch - 1) * len(data_loader) / 16000), 1)
         metrics['weight/u'].update(weight_u)
 
@@ -296,10 +299,6 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
             denormalize(images_x), nrow=compute_nrow(images_x), normalize=True), global_step=epoch)
         writer.add_image('images_u', torchvision.utils.make_grid(
             denormalize(images_u), nrow=compute_nrow(images_u), normalize=True), global_step=epoch)
-        # writer.add_image('images_u_0', torchvision.utils.make_grid(
-        #     denormalize(images_u_0), nrow=compute_nrow(images_u_0), normalize=True), global_step=epoch)
-        # writer.add_image('images_u_1', torchvision.utils.make_grid(
-        #     denormalize(images_u_1), nrow=compute_nrow(images_u_1), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
@@ -308,23 +307,25 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 def eval_epoch(model, data_loader, epoch, config):
     metrics = {
         'accuracy': Mean(),
+        'entropy': Mean(),
     }
 
     with torch.no_grad():
         model.eval()
-        for x_images, x_targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
-            x_images, x_targets = x_images.to(DEVICE), x_targets.to(DEVICE)
+        for images_x, targets_x in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
+            images_x, targets_x = images_x.to(DEVICE), targets_x.to(DEVICE)
 
-            x_logits = model(x_images)
+            probs_x = model(images_x)
 
-            metrics['accuracy'].update((x_logits.argmax(-1) == x_targets).float().data.cpu().numpy())
+            metrics['entropy'].update(entropy(probs_x).data.cpu().numpy())
+            metrics['accuracy'].update((probs_x.argmax(-1) == targets_x).float().data.cpu().numpy())
 
     writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image('x_images', torchvision.utils.make_grid(
-            denormalize(x_images), nrow=compute_nrow(x_images), normalize=True), global_step=epoch)
+        writer.add_image('images_x', torchvision.utils.make_grid(
+            denormalize(images_x), nrow=compute_nrow(images_x), normalize=True), global_step=epoch)
 
     writer.flush()
     writer.close()
