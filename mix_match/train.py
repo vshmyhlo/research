@@ -170,6 +170,7 @@ def build_transforms():
     transform_x = transform_u = T.Compose([
         T.RandomHorizontalFlip(),
         T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
+        T.ColorJitter(0.3, 0.3, 0.3),
         to_tensor_and_norm,
     ])
     eval_transform = T.Compose([
@@ -219,7 +220,7 @@ def mix_match(x, u, model, config):
     del x, u
 
     # predict u targets ################################################################################################
-    images_u = torch.cat([images_u_0, images_u_1], 0)
+    images_u = torch.cat([images_u_0, images_u_1])
     targets_u_0, targets_u_1 = \
         model(images_u).detach() \
             .split([images_u_0.size(0), images_u_1.size(0)])
@@ -228,20 +229,20 @@ def mix_match(x, u, model, config):
     targets_u = targets_u.repeat(2, 1)
 
     # shuffle ##########################################################################################################
-    images_w = torch.cat([images_x, images_u], 0)
-    targets_w = torch.cat([targets_x, targets_u], 0)
+    images_w = torch.cat([images_x, images_u])
+    targets_w = torch.cat([targets_x, targets_u])
     images_w, targets_w = shuffle(images=images_w, targets=targets_w)
-    images_w_0, images_w_1 = images_w.split([images_x.size(0), images_u.size(0)])
-    targets_w_0, targets_w_1 = targets_w.split([targets_x.size(0), targets_u.size(0)])
-
+    images_w_x, images_w_u = images_w.split([images_x.size(0), images_u.size(0)])
+    targets_w_x, targets_w_u = targets_w.split([targets_x.size(0), targets_u.size(0)])
+   
     # mix-up ###########################################################################################################
     images_x, targets_x = mix_up(
         left=(images_x, targets_x),
-        right=(images_w_0, targets_w_0),
+        right=(images_w_x, targets_w_x),
         a=config.train.mix_match.alpha)
     images_u, targets_u = mix_up(
         left=(images_u, targets_u),
-        right=(images_w_1, targets_w_1),
+        right=(images_w_u, targets_w_u),
         a=config.train.mix_match.alpha)
 
     return (images_x, targets_x), (images_u, targets_u)
@@ -273,7 +274,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
                     config=config)
 
         probs_x, probs_u = \
-            model(torch.cat([images_x, images_u], 0)) \
+            model(torch.cat([images_x, images_u])) \
                 .split([images_x.size(0), images_u.size(0)])
 
         # x ############################################################################################################
