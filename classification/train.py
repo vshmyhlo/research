@@ -143,7 +143,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         loss = F.cross_entropy(input=logits, target=targets, reduction='none')
 
         metrics['loss'].update(loss.data.cpu().numpy())
-        metrics['lr'].update(np.squeeze(scheduler.get_lr()))
+        metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
 
         optimizer.zero_grad()
         loss.mean().backward()

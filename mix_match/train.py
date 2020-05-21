@@ -325,15 +325,13 @@ def eval_epoch(model, data_loader, epoch, config):
             metrics['entropy'].update(entropy(probs_x).data.cpu().numpy())
             metrics['accuracy'].update((probs_x.argmax(-1) == targets_x).float().data.cpu().numpy())
 
-        print(probs_x.argmax(-1))
-
     writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image('images_x', torchvision.utils.make_grid(
             images_x, nrow=compute_nrow(images_x), normalize=True), global_step=epoch)
-       
+
     writer.flush()
     writer.close()
 
