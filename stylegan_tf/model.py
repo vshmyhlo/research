@@ -382,7 +382,6 @@ def G_synthesis_stylegan2(
 
     # Building blocks for main layers.
     def block(x, res):  # res = 3..resolution_log2
-        t = x
         with tf.variable_scope('Conv0_up'):
             x = layer(x, layer_idx=res * 2 - 5, fmaps=nf(res - 1), kernel=3, up=True)
         with tf.variable_scope('Conv1'):
