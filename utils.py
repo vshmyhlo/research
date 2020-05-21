@@ -90,3 +90,7 @@ def cross_entropy(input, target, dim=-1, eps=1e-8):
 
 def entropy(input):
     return cross_entropy(input, input)
+
+
+def weighted_sum(left, right, a):
+    return a * left + (1 - a) * right

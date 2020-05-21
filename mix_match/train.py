@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from fix_match.utils import UDataset, XUDataLoader
 from mix_match.model import Model
-from utils import WarmupCosineAnnealingLR, compute_nrow, entropy, one_hot
+from utils import WarmupCosineAnnealingLR, compute_nrow, entropy, one_hot, weighted_sum
 
 NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -207,10 +207,10 @@ def mix_up(left, right, a):
     assert len(left) == len(right)
     assert all(l.size() == r.size() for l, r in zip(left, right))
 
-    lam = torch.distributions.Beta(a, a).sample().to(left[0].device)
+    lam = torch.distributions.Beta(a, a).sample((left[0].size(0),)).to(left[0].device)
     lam = torch.max(lam, 1 - lam)
 
-    return [lam * l + (1 - lam) * r for l, r in zip(left, right)]
+    return [weighted_sum(l, r, a=lam.view(lam.size(0), *[1 for _ in range(l.dim() - 1)])) for l, r in zip(left, right)]
 
 
 def mix_match(x, u, model, config):
@@ -224,7 +224,7 @@ def mix_match(x, u, model, config):
         model(images_u).detach() \
             .split([images_u_0.size(0), images_u_1.size(0)])
 
-    targets_u = sharpen((targets_u_0 + targets_u_1) / 2, t=config.train.temp)
+    targets_u = sharpen((targets_u_0 + targets_u_1) / 2, t=config.train.mix_match.temp)
     targets_u = targets_u.repeat(2, 1)
 
     # shuffle ##########################################################################################################
@@ -238,11 +238,11 @@ def mix_match(x, u, model, config):
     images_x, targets_x = mix_up(
         left=(images_x, targets_x),
         right=(images_w_0, targets_w_0),
-        a=config.train.alpha)
+        a=config.train.mix_match.alpha)
     images_u, targets_u = mix_up(
         left=(images_u, targets_u),
         right=(images_w_1, targets_w_1),
-        a=config.train.alpha)
+        a=config.train.mix_match.alpha)
 
     return (images_x, targets_x), (images_u, targets_u)
 
@@ -263,6 +263,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
             images_x.to(DEVICE), targets_x.to(DEVICE), images_u_0.to(DEVICE), images_u_1.to(DEVICE)
         targets_x = one_hot(targets_x, NUM_CLASSES)
 
+        # mix-match ####################################################################################################
         with torch.no_grad():
             (images_x, targets_x), (images_u, targets_u) = \
                 mix_match(
@@ -285,7 +286,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 
         # opt step #####################################################################################################
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
-        weight_u = config.train.weight_u * min((epoch - 1) / config.epochs_warmup, 1.)
+        weight_u = config.train.mix_match.weight_u * min((epoch - 1) / config.epochs_warmup, 1.)
         metrics['weight/u'].update(weight_u)
 
         optimizer.zero_grad()
