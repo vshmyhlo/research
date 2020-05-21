@@ -1,6 +1,6 @@
 from all_the_tools.config import Config as C
 
-k = 0.5
+k = 0.25
 epochs = 1000
 batch_size = 128
 
@@ -9,12 +9,12 @@ config = C(
     epochs=epochs,
     epochs_warmup=int(epochs * 0.1),
     log_interval=int(epochs * 0.01),
-    model='resnet34',
+    model='resnet50',
     train=C(
         batch_size=int(batch_size * k),
         num_labeled=4000,
         mix_match=C(
-            weight_u=75.,
+            weight_u=25.,
             temp=0.5,
             alpha=0.75,
         ),
