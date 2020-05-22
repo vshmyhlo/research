@@ -170,7 +170,6 @@ def build_transforms():
     transform_x = transform_u = T.Compose([
         T.RandomHorizontalFlip(),
         T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
-        T.ColorJitter(0.3, 0.3, 0.3),
         to_tensor_and_norm,
     ])
     eval_transform = T.Compose([
@@ -234,7 +233,7 @@ def mix_match(x, u, model, config):
     images_w, targets_w = shuffle(images=images_w, targets=targets_w)
     images_w_x, images_w_u = images_w.split([images_x.size(0), images_u.size(0)])
     targets_w_x, targets_w_u = targets_w.split([targets_x.size(0), targets_u.size(0)])
-   
+
     # mix-up ###########################################################################################################
     images_x, targets_x = mix_up(
         left=(images_x, targets_x),
