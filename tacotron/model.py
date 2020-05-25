@@ -207,6 +207,7 @@ class EncoderConv(nn.Sequential):
             blocks.append(nn.Conv1d(features, features, 5, padding=2, bias=False))
             blocks.append(nn.BatchNorm1d(features))
             blocks.append(nn.ReLU(inplace=True))
+            blocks.append(nn.Dropout(0.5))
 
         super().__init__(*blocks)
 
@@ -235,6 +236,7 @@ class PostNet(nn.Sequential):
                 continue
             blocks.append(nn.BatchNorm1d(features))
             blocks.append(nn.Tanh())
+            blocks.append(nn.Dropout(0.5))
 
         super().__init__(*blocks)
 
