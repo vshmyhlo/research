@@ -14,19 +14,18 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from classification.model import Model
 from tacotron.dataset import LJ
+from tacotron.model import Model
 from tacotron.utils import collate_fn
+from tacotron.utils import griffin_lim
 from tacotron.vocab import CharVocab
 from transforms import ApplyTo, ToTorch, Extract
 from transforms.audio import LoadAudio
 from transforms.text import VocabEncode
+from utils import WarmupCosineAnnealingLR
 from utils import compute_nrow
 
-NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
-STD = torch.tensor([0.2470, 0.2435, 0.2616])
 
 
 @click.command()
@@ -50,17 +49,12 @@ def main(config_path, **kwargs):
         num_workers=config.workers,
         collate_fn=collate_fn,
         drop_last=True)
-    (i, t), (i_m, t_m) = next(iter(train_data_loader))
-    print(i.shape, t.shape)
-    print(i_m.shape, t_m.shape)
-    fail
+    # eval_data_loader = torch.utils.data.DataLoader(
+    #     torchvision.datasets.CIFAR10(config.dataset_path, train=False, transform=eval_transform),
+    #     batch_size=config.eval.batch_size,
+    #     num_workers=config.workers)
 
-    eval_data_loader = torch.utils.data.DataLoader(
-        torchvision.datasets.CIFAR10(config.dataset_path, train=False, transform=eval_transform),
-        batch_size=config.eval.batch_size,
-        num_workers=config.workers)
-
-    model = Model(config.model, NUM_CLASSES).to(DEVICE)
+    model = Model(config.model, vocab_size=len(vocab), sample_rate=config.sample_rate).to(DEVICE)
     model.apply(weights_init)
     optimizer = build_optimizer(model.parameters(), config)
     scheduler = build_scheduler(optimizer, config, len(train_data_loader))
@@ -74,32 +68,19 @@ def main(config_path, **kwargs):
 
     for epoch in range(1, config.epochs + 1):
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
-        if epoch % config.log_interval != 0:
-            continue
-        eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        # eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
         saver.save(
             os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
             epoch=epoch)
 
 
 def build_optimizer(parameters, config):
-    if config.train.opt.type == 'sgd':
-        optimizer = torch.optim.SGD(
-            parameters,
-            config.train.opt.lr,
-            momentum=config.train.opt.momentum,
-            weight_decay=config.train.opt.weight_decay,
-            nesterov=True)
-    elif config.train.opt.type == 'rmsprop':
-        optimizer = torch.optim.RMSprop(
-            parameters,
-            config.train.opt.lr,
-            momentum=config.train.opt.momentum,
-            weight_decay=config.train.opt.weight_decay)
-    elif config.train.opt.type == 'adam':
+    if config.train.opt.type == 'adam':
         optimizer = torch.optim.Adam(
             parameters,
             config.train.opt.lr,
+            betas=config.train.opt.beta,
+            eps=config.train.opt.eps,
             weight_decay=config.train.opt.weight_decay)
     else:
         raise AssertionError('invalid optimizer {}'.format(config.train.opt.type))
@@ -113,6 +94,11 @@ def build_scheduler(optimizer, config, steps_per_epoch):
             optimizer,
             [epoch * steps_per_epoch for epoch in config.train.sched.epochs],
             gamma=0.1)
+    elif config.train.sched.type == 'warmup_cosine':
+        scheduler = WarmupCosineAnnealingLR(
+            optimizer,
+            epoch_warmup=config.train.sched.epochs_warmup * steps_per_epoch,
+            epoch_max=config.epochs * steps_per_epoch)
     else:
         raise AssertionError('invalid scheduler {}'.format(config.train.sched.type))
 
@@ -142,11 +128,14 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     }
 
     model.train()
-    for images, targets in tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
-        images, targets = images.to(DEVICE), targets.to(DEVICE)
+    for (text, audio), (text_mask, audio_mask) in \
+            tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
+        text, audio, text_mask, audio_mask = \
+            [x.to(DEVICE) for x in [text, audio, text_mask, audio_mask]]
 
-        logits = model(images)
-        loss = F.cross_entropy(input=logits, target=targets, reduction='none')
+        output, pre_output, target, target_mask, weight = model(text, audio, audio_mask)
+
+        loss = mse(output, target, target_mask) + mse(pre_output, target, target_mask)
 
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
@@ -156,16 +145,31 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         optimizer.step()
         scheduler.step()
 
-    if epoch % config.log_interval != 0:
-        return
-
     writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
     with torch.no_grad():
+        gl_true = griffin_lim(target, model.spectra)
+        gl_pred = griffin_lim(output, model.spectra)
+        output, pre_output, target, weight = \
+            [x.unsqueeze(1) for x in [output, pre_output, target, weight]]
+        nrow = compute_nrow(target)
+
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image('images', torchvision.utils.make_grid(
-            images, nrow=compute_nrow(images), normalize=True), global_step=epoch)
-        writer.add_histogram('params', flatten_weights(model.parameters()), global_step=epoch)
+        writer.add_image('target', torchvision.utils.make_grid(
+            target, nrow=nrow, normalize=True), global_step=epoch)
+        writer.add_image('output', torchvision.utils.make_grid(
+            output, nrow=nrow, normalize=True), global_step=epoch)
+        writer.add_image('pre_output', torchvision.utils.make_grid(
+            pre_output, nrow=nrow, normalize=True), global_step=epoch)
+        writer.add_image('weight', torchvision.utils.make_grid(
+            weight, nrow=nrow, normalize=True), global_step=epoch)
+        for i in tqdm(range(min(text.size(0), 4)), desc='writing audio'):
+            writer.add_audio(
+                'audio/{}'.format(i), audio[i], sample_rate=config.sample_rate, global_step=epoch)
+            writer.add_audio(
+                'griffin-lim-true/{}'.format(i), gl_true[i], sample_rate=config.sample_rate, global_step=epoch)
+            writer.add_audio(
+                'griffin-lim-pred/{}'.format(i), gl_pred[i], sample_rate=config.sample_rate, global_step=epoch)
 
     writer.flush()
     writer.close()
@@ -209,10 +213,13 @@ def weights_init(m):
         nn.init.zeros_(m.bias)
 
 
-def flatten_weights(params):
-    params = torch.cat([p.data.view(-1) for p in params if p.grad is not None])
+def mse(input, target, mask):
+    mask = mask.unsqueeze(1)
 
-    return params
+    loss = (input - target)**2
+    loss = (loss * mask).sum(2).mean(1)
+
+    return loss
 
 
 if __name__ == '__main__':
