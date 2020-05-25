@@ -133,8 +133,8 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         text, audio, text_mask, audio_mask = \
             [x.to(DEVICE) for x in [text, audio, text_mask, audio_mask]]
 
-        output, pre_output, target, target_mask, weight = model(text, audio, audio_mask)
-
+        output, pre_output, target, target_mask, weight = model(text, text_mask, audio, audio_mask)
+       
         loss = mse(output, target, target_mask) + mse(pre_output, target, target_mask)
 
         metrics['loss'].update(loss.data.cpu().numpy())

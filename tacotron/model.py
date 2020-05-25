@@ -75,11 +75,11 @@ class Model(nn.Module):
         self.encoder = Encoder(vocab_size, model.base_features)
         self.decoder = Decoder(model.num_mels, model.base_features)
 
-    def forward(self, input, target, target_mask):
+    def forward(self, input, input_mask, target, target_mask):
         input = self.encoder(input)
         target = self.spectra(target)
         target_mask = downsample_mask(target_mask, target.size(2))
-        output, pre_output, weight = self.decoder(input, target)
+        output, pre_output, weight = self.decoder(input, input_mask, target)
 
         return output, pre_output, target, target_mask, weight
 
@@ -115,7 +115,7 @@ class Decoder(nn.Module):
         self.output_proj = nn.Linear(features * 3, num_mels)
         self.post_net = PostNet(num_mels, features)
 
-    def forward(self, input, target):
+    def forward(self, input, input_mask, target):
         target = self.pre_net(target)
         target = torch.cat([
             torch.zeros(target.size(0), target.size(1), 1, device=target.device),
@@ -132,7 +132,7 @@ class Decoder(nn.Module):
         pre_output = []
         weight = []
         for t in range(target.size(2)):
-            out, state = self.step(input, target[:, :, t], state)
+            out, state = self.step(input, input_mask, target[:, :, t], state)
             pre_output.append(out)
             weight.append(state['attention_weight'])
 
@@ -143,7 +143,7 @@ class Decoder(nn.Module):
 
         return output, pre_output, weight
 
-    def step(self, input, output, state):
+    def step(self, input, input_mask, output, state):
         state_prime = {}
         context = state['context']
 
@@ -152,7 +152,7 @@ class Decoder(nn.Module):
         output, _ = state_prime['rnn_1']
 
         context, state_prime['attention_weight'] = self.attention(
-            query=output, key_value=input, weight=state['attention_weight'])
+            query=output, key_value=input, mask=input_mask, weight=state['attention_weight'])
 
         output = torch.cat([output, context], 1)
         state_prime['rnn_2'] = self.rnn_2(output, state['rnn_2'])
@@ -181,7 +181,7 @@ class Attention(nn.Module):
 
         nn.init.zeros_(self.bias)
 
-    def forward(self, query, key_value, weight):
+    def forward(self, query, key_value, mask, weight):
         key = value = key_value
         del key_value
 
@@ -192,8 +192,9 @@ class Attention(nn.Module):
 
         scores = query + key + weight + self.bias
         scores = self.scores(torch.tanh(scores))
-
+        scores = scores.masked_fill_(~mask.unsqueeze(-1), float('-inf'))
         weight = scores.softmax(1)
+
         context = (weight * value).sum(1)
 
         return context, weight.squeeze(2)
