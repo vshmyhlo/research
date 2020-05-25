@@ -3,7 +3,6 @@ import os
 import click
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data
 import torchvision
@@ -55,7 +54,6 @@ def main(config_path, **kwargs):
     #     num_workers=config.workers)
 
     model = Model(config.model, vocab_size=len(vocab), sample_rate=config.sample_rate).to(DEVICE)
-    model.apply(weights_init)
     optimizer = build_optimizer(model.parameters(), config)
     scheduler = build_scheduler(optimizer, config, len(train_data_loader))
     saver = Saver({
@@ -135,7 +133,8 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 
         output, pre_output, target, target_mask, weight = model(text, text_mask, audio, audio_mask)
 
-        loss = mse(output, target, target_mask) + mse(pre_output, target, target_mask)
+        loss = masked_mse(output, target, target_mask) + \
+               masked_mse(pre_output, target, target_mask)
 
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
@@ -203,21 +202,10 @@ def eval_epoch(model, data_loader, epoch, config):
     writer.close()
 
 
-def weights_init(m):
-    if isinstance(m, (nn.Conv2d,)):
-        nn.init.kaiming_normal_(m.weight)
-        if m.bias is not None:
-            nn.init.zeros_(m.bias)
-    elif isinstance(m, (nn.BatchNorm2d,)):
-        nn.init.ones_(m.weight)
-        nn.init.zeros_(m.bias)
-
-
-def mse(input, target, mask):
-    mask = mask.unsqueeze(1)
-
+def masked_mse(input, target, mask):
     loss = (input - target)**2
-    loss = (loss * mask).sum(2).mean(1)
+    loss = loss.sum(1)  # sum by C
+    loss = (loss * mask).sum(1) / mask.sum(1)  # mean by T
 
     return loss
 

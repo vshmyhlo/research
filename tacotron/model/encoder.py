@@ -8,7 +8,7 @@ class Encoder(nn.Module):
     def __init__(self, vocab_size, features):
         super().__init__()
 
-        self.emb = nn.Embedding(vocab_size, features)
+        self.emb = nn.Embedding(vocab_size, features, padding_idx=0)
         self.conv = EncoderConv(features)
         self.rnn = nn.LSTM(features, features // 2, bidirectional=True, batch_first=True)
 
@@ -17,7 +17,7 @@ class Encoder(nn.Module):
         input = transpose_t_c(input)
         input = self.conv(input)
         input = transpose_t_c(input)
-      
+
         input = torch.nn.utils.rnn.pack_padded_sequence(input, input_mask.sum(1), batch_first=True)
         input, _ = self.rnn(input)
         input, tmp = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=True, padding_value=0.)

@@ -5,3 +5,4 @@
 * [Meta Pseudo Labels](./mpl_torch) (PyTorch, CIFAR-10 SSL)
 * [MixMatch](./mix_match) (PyTorch, CIFAR-10 SSL)
 * [StyleGAN2](./stylegan_tf) (TensorFlow)
+* [Tacotron2](./tacotron) (PyTorch)

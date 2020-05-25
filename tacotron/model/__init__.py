@@ -28,10 +28,6 @@ class Spectrogram(nn.Module):
         self.filters = nn.Parameter(filters, requires_grad=False)
         self.filters_inv = nn.Parameter(torch.pinverse(filters), requires_grad=False)
 
-        # self.mel = nn.Conv1d(filters.shape[1], filters.shape[0], 1, bias=False)
-        # self.mel.weight.data.copy_(self.filters_to_tensor(filters))
-        # self.mel.weight.requires_grad = False
-
     def wave_to_spectra(self, input):
         input = torch.stft(
             input,
@@ -78,6 +74,8 @@ class Model(nn.Module):
         self.decoder = Decoder(model.num_mels, model.base_features)
         self.post_net = PostNet(model.num_mels, model.base_features)
 
+        self.apply(self.weights_init)
+
     def forward(self, input, input_mask, target, target_mask):
         input = self.encoder(input, input_mask)
         target = self.spectra(target)
@@ -87,19 +85,30 @@ class Model(nn.Module):
 
         return output, pre_output, target, target_mask, weight
 
+    @staticmethod
+    def weights_init(m):
+        if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Linear,)):
+            nn.init.xavier_normal_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d,)):
+            nn.init.ones_(m.weight)
+            nn.init.zeros_(m.bias)
+        elif isinstance(m, (nn.Embedding,)):
+            nn.init.normal_(m.weight)
+
 
 class PostNet(nn.Sequential):
-    def __init__(self, num_mels, features):
+    def __init__(self, num_mels, features, num_layers=5):
         blocks = []
-        for i in range(5):
+        for i in range(num_layers - 1):
             in_features = num_mels if i == 0 else features
-            out_features = num_mels if i == 4 else features
 
-            blocks.append(nn.Conv1d(in_features, out_features, 5, padding=2, bias=False))
-            if i == 4:
-                continue
+            blocks.append(nn.Conv1d(in_features, features, 5, padding=2, bias=False))
             blocks.append(nn.BatchNorm1d(features))
             blocks.append(nn.Tanh())
             blocks.append(nn.Dropout(0.5))
+
+        blocks.append(nn.Conv1d(features, num_mels, 5, padding=2))
 
         super().__init__(*blocks)
