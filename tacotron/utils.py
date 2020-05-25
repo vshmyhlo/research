@@ -18,13 +18,15 @@ def pad_and_pack(tensors):
     return tensor, mask
 
 
+# TODO: refactor
 def collate_fn(batch):
-    sigs, syms = list(zip(*batch))
+    batch = sorted(batch, key=lambda b: b[0].shape[0], reverse=True)
+    e, d = list(zip(*batch))
 
-    sigs, sigs_mask = pad_and_pack(sigs)
-    syms, syms_mask = pad_and_pack(syms)
+    e, e_mask = pad_and_pack(e)
+    d, d_mask = pad_and_pack(d)
 
-    return (sigs, syms), (sigs_mask, syms_mask)
+    return (e, e_mask), (d, d_mask)
 
 
 # TODO:
@@ -49,3 +51,7 @@ def downsample_mask(input, size):
     input = input.squeeze(1).bool()
 
     return input
+
+
+def transpose_t_c(input):
+    return input.transpose(1, 2)
