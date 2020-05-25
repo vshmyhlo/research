@@ -3,7 +3,6 @@ import os
 import click
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
@@ -42,16 +41,17 @@ def main(config_path, **kwargs):
     train_transform, eval_transform = build_transforms(vocab, config)
 
     train_data_loader = torch.utils.data.DataLoader(
-        LJ(config.dataset_path, transform=train_transform),
+        LJ(config.dataset_path, subset='train', transform=train_transform),
         batch_size=config.train.batch_size,
         shuffle=True,
         num_workers=config.workers,
         collate_fn=collate_fn,
         drop_last=True)
-    # eval_data_loader = torch.utils.data.DataLoader(
-    #     torchvision.datasets.CIFAR10(config.dataset_path, train=False, transform=eval_transform),
-    #     batch_size=config.eval.batch_size,
-    #     num_workers=config.workers)
+    eval_data_loader = torch.utils.data.DataLoader(
+        LJ(config.dataset_path, subset='test', transform=eval_transform),
+        batch_size=config.train.batch_size,
+        num_workers=config.workers,
+        collate_fn=collate_fn)
 
     model = Model(config.model, vocab_size=len(vocab), sample_rate=config.sample_rate).to(DEVICE)
     optimizer = build_optimizer(model.parameters(), config)
@@ -66,7 +66,7 @@ def main(config_path, **kwargs):
 
     for epoch in range(1, config.epochs + 1):
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
-        # eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
         saver.save(
             os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
             epoch=epoch)
@@ -177,26 +177,47 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 def eval_epoch(model, data_loader, epoch, config):
     metrics = {
         'loss': Mean(),
-        'accuracy': Mean(),
     }
 
     with torch.no_grad():
         model.eval()
-        for images, targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
-            images, targets = images.to(DEVICE), targets.to(DEVICE)
+        for (text, text_mask), (audio, audio_mask) in \
+                tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
+            text, audio, text_mask, audio_mask = \
+                [x.to(DEVICE) for x in [text, audio, text_mask, audio_mask]]
 
-            logits = model(images)
-            loss = F.cross_entropy(input=logits, target=targets, reduction='none')
+            output, pre_output, target, target_mask, weight = model(text, text_mask, audio, audio_mask)
+
+            loss = masked_mse(output, target, target_mask) + \
+                   masked_mse(pre_output, target, target_mask)
 
             metrics['loss'].update(loss.data.cpu().numpy())
-            metrics['accuracy'].update((logits.argmax(-1) == targets).float().data.cpu().numpy())
 
     writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():
+        gl_true = griffin_lim(target, model.spectra)
+        gl_pred = griffin_lim(output, model.spectra)
+        output, pre_output, target, weight = \
+            [x.unsqueeze(1) for x in [output, pre_output, target, weight]]
+        nrow = compute_nrow(target)
+
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image('images', torchvision.utils.make_grid(
-            images, nrow=compute_nrow(images), normalize=True), global_step=epoch)
+        writer.add_image('target', torchvision.utils.make_grid(
+            target, nrow=nrow, normalize=True), global_step=epoch)
+        writer.add_image('output', torchvision.utils.make_grid(
+            output, nrow=nrow, normalize=True), global_step=epoch)
+        writer.add_image('pre_output', torchvision.utils.make_grid(
+            pre_output, nrow=nrow, normalize=True), global_step=epoch)
+        writer.add_image('weight', torchvision.utils.make_grid(
+            weight, nrow=nrow, normalize=True), global_step=epoch)
+        for i in tqdm(range(min(text.size(0), 4)), desc='writing audio'):
+            writer.add_audio(
+                'audio/{}'.format(i), audio[i], sample_rate=config.sample_rate, global_step=epoch)
+            writer.add_audio(
+                'griffin-lim-true/{}'.format(i), gl_true[i], sample_rate=config.sample_rate, global_step=epoch)
+            writer.add_audio(
+                'griffin-lim-pred/{}'.format(i), gl_pred[i], sample_rate=config.sample_rate, global_step=epoch)
 
     writer.flush()
     writer.close()
