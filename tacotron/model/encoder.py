@@ -20,8 +20,8 @@ class Encoder(nn.Module):
 
         input = torch.nn.utils.rnn.pack_padded_sequence(input, input_mask.sum(1), batch_first=True)
         input, _ = self.rnn(input)
-        input, tmp = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=True, padding_value=0.)
-
+        input, _ = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=True, padding_value=0.)
+       
         return input
 
 

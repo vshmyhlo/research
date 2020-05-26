@@ -41,12 +41,12 @@ class Spectrogram(nn.Module):
         phase = torch.atan2(imag, real)
 
         input = F.conv1d(input, self.filters.unsqueeze(-1))
-        input = torch.log(torch.clamp(input, min=1e-8))
+        input = 10. * torch.log10(torch.clamp(input, min=1e-5))
 
         return input, phase
 
     def spectra_to_wave(self, input, phase):
-        input = torch.exp(input)
+        input = 10.**(input / 10.)
         input = F.conv1d(input, self.filters_inv.unsqueeze(-1))
 
         input = torch.stack([input * torch.cos(phase), input * torch.sin(phase)], dim=-1)

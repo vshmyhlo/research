@@ -182,7 +182,7 @@ def eval_epoch(model, data_loader, epoch, config):
     with torch.no_grad():
         model.eval()
         for (text, text_mask), (audio, audio_mask) in \
-                tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
+                tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
             text, audio, text_mask, audio_mask = \
                 [x.to(DEVICE) for x in [text, audio, text_mask, audio_mask]]
 
