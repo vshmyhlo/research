@@ -94,8 +94,8 @@ class Attention(nn.Module):
 
         self.query = nn.Linear(query_features, mid_features, bias=False)
         self.key = nn.Linear(key_features, mid_features, bias=False)
-        self.weight = LocationLayer(mid_features)
-
+        self.weight = LocationLayer(out_features=mid_features)
+       
         self.scores = nn.Linear(mid_features, 1)
 
     def forward(self, query, key, value, mask, weight):
@@ -114,11 +114,11 @@ class Attention(nn.Module):
 
 
 class LocationLayer(nn.Module):
-    def __init__(self, features):
+    def __init__(self, out_features):
         super().__init__()
 
         self.conv = nn.Conv1d(2, 32, 31, padding=31 // 2, bias=False)
-        self.linear = nn.Linear(32, features, bias=False)
+        self.linear = nn.Linear(32, out_features, bias=False)
 
     def forward(self, input):
         input = self.conv(input)
