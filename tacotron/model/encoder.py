@@ -5,12 +5,12 @@ from tacotron.utils import transpose_t_c
 
 
 class Encoder(nn.Module):
-    def __init__(self, vocab_size, features):
+    def __init__(self, vocab_size, base_features):
         super().__init__()
 
-        self.emb = nn.Embedding(vocab_size, features, padding_idx=0)
-        self.conv = EncoderConv(features)
-        self.rnn = nn.LSTM(features, features // 2, bidirectional=True, batch_first=True)
+        self.emb = nn.Embedding(vocab_size, base_features, padding_idx=0)
+        self.conv = EncoderConv(features=base_features)
+        self.rnn = nn.LSTM(base_features, base_features // 2, bidirectional=True, batch_first=True)
 
     def forward(self, input, input_mask):
         input = self.emb(input)
@@ -21,7 +21,7 @@ class Encoder(nn.Module):
         input = torch.nn.utils.rnn.pack_padded_sequence(input, input_mask.sum(1), batch_first=True)
         input, _ = self.rnn(input)
         input, _ = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=True, padding_value=0.)
-       
+
         return input
 
 

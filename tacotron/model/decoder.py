@@ -5,16 +5,16 @@ from tacotron.utils import transpose_t_c
 
 
 class Decoder(nn.Module):
-    def __init__(self, num_mels, features):
+    def __init__(self, num_mels, base_features):
         super().__init__()
 
-        self.pre_net = PreNet(num_mels, features)
-
-        self.attention = Attention(features)
-        self.rnn_1 = nn.LSTMCell(features + features // 2, features * 2)
-        self.rnn_2 = nn.LSTMCell(features * 3, features * 2)
-
-        self.output_proj = nn.Linear(features * 3, num_mels)
+        self.pre_net = PreNet(num_mels=num_mels, out_features=base_features // 2)
+        self.attention = Attention(
+            query_features=base_features * 2, key_features=base_features, mid_features=base_features // 4)
+        self.rnn_attention = nn.LSTMCell(base_features + base_features // 2, base_features * 2)
+        self.rnn_decoder = nn.LSTMCell(base_features + base_features * 2, base_features * 2)
+        self.output_proj = nn.Linear(base_features + base_features * 2, num_mels)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, input, input_mask, target):
         target = torch.cat([
@@ -27,8 +27,8 @@ class Decoder(nn.Module):
             'context': torch.zeros(input.size(0), input.size(2), device=input.device),
             'attention_weight': torch.zeros(input.size(0), input.size(1), device=input.device),
             'attention_weight_cum': torch.zeros(input.size(0), input.size(1), device=input.device),
-            'rnn_1': None,
-            'rnn_2': None,
+            'rnn_attention': None,
+            'rnn_decoder': None,
         }
 
         key = self.attention.key(input)  # FIXME:
@@ -50,8 +50,8 @@ class Decoder(nn.Module):
         context = state['context']
 
         output = torch.cat([output, context], 1)
-        state_prime['rnn_1'] = self.rnn_1(output, state['rnn_1'])
-        output, _ = state_prime['rnn_1']
+        state_prime['rnn_attention'] = self.rnn_attention(output, state['rnn_attention'])
+        output, _ = state_prime['rnn_attention']
 
         context, state_prime['attention_weight'] = self.attention(
             query=output,
@@ -64,9 +64,10 @@ class Decoder(nn.Module):
             ], 1))
         state_prime['attention_weight_cum'] = state['attention_weight_cum'] + state_prime['attention_weight']
 
+        output = self.dropout(output)
         output = torch.cat([output, context], 1)
-        state_prime['rnn_2'] = self.rnn_2(output, state['rnn_2'])
-        output, _ = state_prime['rnn_2']
+        state_prime['rnn_decoder'] = self.rnn_decoder(output, state['rnn_decoder'])
+        output, _ = state_prime['rnn_decoder']
 
         output = torch.cat([output, context], 1)
         output = self.output_proj(output)
@@ -77,28 +78,25 @@ class Decoder(nn.Module):
 
 
 class PreNet(nn.Sequential):
-    def __init__(self, num_mels, features):
+    def __init__(self, num_mels, out_features):
         blocks = []
         for i in range(2):
-            blocks.append(nn.Conv1d(num_mels if i == 0 else features // 2, features // 2, 1, bias=False))
-            blocks.append(nn.BatchNorm1d(features // 2))
+            blocks.append(nn.Conv1d(num_mels if i == 0 else out_features, out_features, 1, bias=False))
+            blocks.append(nn.BatchNorm1d(out_features))
             blocks.append(nn.ReLU(inplace=True))
 
         super().__init__(*blocks)
 
 
-# TODO: init
-
-
 class Attention(nn.Module):
-    def __init__(self, features):
+    def __init__(self, query_features, key_features, mid_features):
         super().__init__()
 
-        self.query = nn.Linear(features * 2, features // 4, bias=False)
-        self.key = nn.Linear(features, features // 4, bias=False)
-        self.weight = LocationLayer(features)
+        self.query = nn.Linear(query_features, mid_features, bias=False)
+        self.key = nn.Linear(key_features, mid_features, bias=False)
+        self.weight = LocationLayer(mid_features)
 
-        self.scores = nn.Linear(features // 4, 1)
+        self.scores = nn.Linear(mid_features, 1)
 
     def forward(self, query, key, value, mask, weight):
         query = self.query(query.unsqueeze(1))
@@ -120,7 +118,7 @@ class LocationLayer(nn.Module):
         super().__init__()
 
         self.conv = nn.Conv1d(2, 32, 31, padding=31 // 2, bias=False)
-        self.linear = nn.Linear(32, features // 4, bias=False)
+        self.linear = nn.Linear(32, features, bias=False)
 
     def forward(self, input):
         input = self.conv(input)
