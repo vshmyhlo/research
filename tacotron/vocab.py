@@ -1,6 +1,6 @@
 import string
 
-VOCAB = list(string.ascii_lowercase)
+VOCAB = [' '] + list(string.ascii_lowercase)
 
 
 class CharVocab(object):

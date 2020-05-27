@@ -1,9 +1,8 @@
-* mask attention
-* rnn padded sequence
 * split mel/stft
 * griffin lim only for stft part
-* batch by size
 * check loss computation
-
-
- 
+* normalize spectras (per-channel)
+* per sample forcing
+* mean loss by C
+* maximize mean entropy and minimize individual entropies
+* check processed inputs

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+from scipy.ndimage import gaussian_filter
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -70,3 +71,19 @@ def downsample_mask(input, size):
 
 def transpose_t_c(input):
     return input.transpose(1, 2)
+
+
+def soft_diag(h, w):
+    def r(x):
+        return np.floor(x).astype(np.int64)
+
+    j = np.arange(w)
+    i = r(j.astype(np.float) / w * h)
+    x = np.zeros((h, w))
+    x[i, j] = 1.
+
+    x = gaussian_filter(x, h / 20, mode='constant')
+    x = (x - x.min()) / (x.max() - x.min())
+    x = x * 2. - 1.
+
+    return x
