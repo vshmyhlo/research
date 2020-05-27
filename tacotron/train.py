@@ -14,7 +14,9 @@ from tqdm import tqdm
 
 from tacotron.dataset import LJ
 from tacotron.model.__init__ import Model
+from tacotron.sampler import BatchSampler
 from tacotron.utils import collate_fn
+from tacotron.utils import compute_sample_sizes
 from tacotron.utils import griffin_lim
 from tacotron.vocab import CharVocab
 from transforms import ApplyTo, ToTorch, Extract
@@ -40,16 +42,19 @@ def main(config_path, **kwargs):
     vocab = CharVocab()
     train_transform, eval_transform = build_transforms(vocab, config)
 
+    train_dataset = LJ(config.dataset_path, subset='train', transform=train_transform)
+    eval_dataset = LJ(config.dataset_path, subset='test', transform=eval_transform)
+
     train_data_loader = torch.utils.data.DataLoader(
-        LJ(config.dataset_path, subset='train', transform=train_transform),
-        batch_size=config.train.batch_size,
-        shuffle=True,
+        train_dataset,
+        batch_sampler=BatchSampler(
+            compute_sample_sizes(train_dataset), batch_size=config.train.batch_size, shuffle=True, drop_last=True),
         num_workers=config.workers,
-        collate_fn=collate_fn,
-        drop_last=True)
+        collate_fn=collate_fn)
     eval_data_loader = torch.utils.data.DataLoader(
-        LJ(config.dataset_path, subset='test', transform=eval_transform),
-        batch_size=config.train.batch_size,
+        eval_dataset,
+        batch_sampler=BatchSampler(
+            compute_sample_sizes(eval_dataset), batch_size=config.eval.batch_size, shuffle=False, drop_last=False),
         num_workers=config.workers,
         collate_fn=collate_fn)
 

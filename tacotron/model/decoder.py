@@ -13,8 +13,8 @@ class Decoder(nn.Module):
             query_features=base_features * 2, key_features=base_features, mid_features=base_features // 4)
         self.rnn_attention = nn.LSTMCell(base_features + base_features // 2, base_features * 2)
         self.rnn_decoder = nn.LSTMCell(base_features + base_features * 2, base_features * 2)
+        self.rnn_dropout = nn.Dropout(0.1)
         self.output_proj = nn.Linear(base_features + base_features * 2, num_mels)
-        self.dropout = nn.Dropout(0.5)
 
     def forward(self, input, input_mask, target):
         target = torch.cat([
@@ -51,6 +51,7 @@ class Decoder(nn.Module):
 
         output = torch.cat([output, context], 1)
         state_prime['rnn_attention'] = self.rnn_attention(output, state['rnn_attention'])
+        state_prime['rnn_attention'] = tuple(self.rnn_dropout(x) for x in state_prime['rnn_attention'])
         output, _ = state_prime['rnn_attention']
 
         context, state_prime['attention_weight'] = self.attention(
@@ -64,10 +65,10 @@ class Decoder(nn.Module):
             ], 1))
         state_prime['attention_weight_cum'] = state['attention_weight_cum'] + state_prime['attention_weight']
 
-        output = self.dropout(output)
         output = torch.cat([output, context], 1)
         state_prime['rnn_decoder'] = self.rnn_decoder(output, state['rnn_decoder'])
         output, _ = state_prime['rnn_decoder']
+        output = self.rnn_dropout(output)
 
         output = torch.cat([output, context], 1)
         output = self.output_proj(output)
@@ -84,6 +85,7 @@ class PreNet(nn.Sequential):
             blocks.append(nn.Conv1d(num_mels if i == 0 else out_features, out_features, 1, bias=False))
             blocks.append(nn.BatchNorm1d(out_features))
             blocks.append(nn.ReLU(inplace=True))
+            blocks.append(nn.Dropout(0.5))
 
         super().__init__(*blocks)
 
@@ -95,7 +97,7 @@ class Attention(nn.Module):
         self.query = nn.Linear(query_features, mid_features, bias=False)
         self.key = nn.Linear(key_features, mid_features, bias=False)
         self.weight = LocationLayer(out_features=mid_features)
-       
+
         self.scores = nn.Linear(mid_features, 1)
 
     def forward(self, query, key, value, mask, weight):

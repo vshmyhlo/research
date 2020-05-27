@@ -9,7 +9,7 @@ class BatchSampler(torch.utils.data.Sampler):
 
         data = pd.DataFrame({
             'i': range(len(data)),
-            'size': data['size'],
+            'size': data,
         }).sort_values('size')
 
         batches = [group['i'] for _, group in data.groupby(np.arange(len(data)) // batch_size)]

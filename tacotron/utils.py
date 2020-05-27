@@ -1,6 +1,8 @@
 import numpy as np
+import pandas as pd
 import torch
 from torch.nn import functional as F
+from tqdm import tqdm
 
 
 def pad_and_pack(tensors):
@@ -27,6 +29,19 @@ def collate_fn(batch):
     d, d_mask = pad_and_pack(d)
 
     return (e, e_mask), (d, d_mask)
+
+
+def compute_sample_sizes(dataset):
+    data = []
+    for i in tqdm(range(len(dataset))):
+        t, a = dataset[i]
+        data.append({'t': t.size(0), 'a': a.size(0)})
+    data = pd.DataFrame(data)
+
+    data['r'] = data['a'] / data['t']
+    data['size'] = (data['t'] * data['r'].mean() + data['a']) / 2
+
+    return data['size']
 
 
 # TODO:
