@@ -2,14 +2,14 @@ import torch
 
 
 class ApplyTo(object):
-    def __init__(self, to, transform):
-        self.to = to
+    def __init__(self, key, transform):
+        self.key = key
         self.transform = transform
 
     def __call__(self, input):
         input = {
             **input,
-            self.to: self.transform(input[self.to])
+            self.key: self.transform(input[self.key])
         }
 
         return input

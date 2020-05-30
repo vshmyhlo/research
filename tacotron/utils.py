@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 
 def pad_and_pack(tensors):
-    sizes = [t.shape[0] for t in tensors]
+    sizes = [t.size(0) for t in tensors]
 
     tensor = torch.zeros(
         len(sizes), max(sizes), dtype=tensors[0].dtype, layout=tensors[0].layout, device=tensors[0].device)
@@ -21,9 +21,8 @@ def pad_and_pack(tensors):
     return tensor, mask
 
 
-# TODO: refactor
 def collate_fn(batch):
-    batch = sorted(batch, key=lambda b: b[0].shape[0], reverse=True)
+    batch = sorted(batch, key=lambda b: b[0].size(0), reverse=True)
     e, d = list(zip(*batch))
 
     e, e_mask = pad_and_pack(e)

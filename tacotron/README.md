@@ -11,5 +11,9 @@
 * use conv norm and linear norm everywhere
 * check training performance
 * cache spectrograms
+* bn for linear layers
+* layer norm? norms from LAS
+* xavier_uniform init for linear
+
 
 

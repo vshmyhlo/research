@@ -1,8 +1,8 @@
 import torch
 from torch import nn as nn
 
-from tacotron.model.modules import ConvNorm1d, Conv1d, Linear
-from tacotron.utils import transpose_t_c
+from tacotron.model.attention import Attention
+from tacotron.model.modules import ConvNorm1d, Linear
 
 
 class Decoder(nn.Module):
@@ -52,8 +52,8 @@ class Decoder(nn.Module):
 
         output = torch.cat([output, context], 1)
         state_prime['rnn_attention'] = self.rnn_attention(output, state['rnn_attention'])
-        state_prime['rnn_attention'] = tuple(self.rnn_dropout(x) for x in state_prime['rnn_attention'])
         output, _ = state_prime['rnn_attention']
+        output = self.rnn_dropout(output)
 
         context, state_prime['attention_weight'] = self.attention(
             query=output,
@@ -88,43 +88,3 @@ class PreNet(nn.Sequential):
             blocks.append(nn.Dropout(0.5))
 
         super().__init__(*blocks)
-
-
-class Attention(nn.Module):
-    def __init__(self, query_features, key_features, mid_features):
-        super().__init__()
-
-        self.query = Linear(query_features, mid_features, bias=False)
-        self.key = Linear(key_features, mid_features, bias=False)
-        self.weight = LocationLayer(out_features=mid_features)
-
-        self.scores = Linear(mid_features, 1)
-
-    def forward(self, query, key, value, mask, weight):
-        query = self.query(query.unsqueeze(1))
-        # key = self.key(key) # FIXME:
-        weight = self.weight(weight)
-
-        scores = query + key + weight
-        scores = self.scores(torch.tanh(scores))
-        scores = scores.masked_fill_(~mask.unsqueeze(-1), float('-inf'))
-        weight = scores.softmax(1)
-
-        context = (weight * value).sum(1)
-
-        return context, weight.squeeze(2)
-
-
-class LocationLayer(nn.Module):
-    def __init__(self, out_features):
-        super().__init__()
-
-        self.conv = Conv1d(2, 32, 31, padding=31 // 2, bias=False)
-        self.linear = Linear(32, out_features, bias=False)
-
-    def forward(self, input):
-        input = self.conv(input)
-        input = transpose_t_c(input)
-        input = self.linear(input)
-
-        return input

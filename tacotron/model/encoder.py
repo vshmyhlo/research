@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 
@@ -12,6 +14,10 @@ class Encoder(nn.Module):
         self.emb = nn.Embedding(vocab_size, base_features, padding_idx=0)
         self.conv = EncoderConv(features=base_features)
         self.rnn = nn.LSTM(base_features, base_features // 2, bidirectional=True, batch_first=True)
+
+        std = math.sqrt(2.0 / (vocab_size + base_features))
+        val = math.sqrt(3.0) * std
+        nn.init.uniform_(self.emb.weight, -val, val)
 
     def forward(self, input, input_mask):
         input = self.emb(input)
