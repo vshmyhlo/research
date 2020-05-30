@@ -6,3 +6,10 @@
 * mean loss by C
 * maximize mean entropy and minimize individual entropies
 * check processed inputs
+* better init
+* loss mean by C
+* use conv norm and linear norm everywhere
+* check training performance
+* cache spectrograms
+
+

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from tacotron.model.modules import ConvNorm1d
 from tacotron.utils import transpose_t_c
 
 
@@ -29,8 +30,7 @@ class EncoderConv(nn.Sequential):
     def __init__(self, features):
         blocks = []
         for _ in range(3):
-            blocks.append(nn.Conv1d(features, features, 5, padding=2, bias=False))
-            blocks.append(nn.BatchNorm1d(features))
+            blocks.append(ConvNorm1d(features, features, 5, padding=2, init='relu'))
             blocks.append(nn.ReLU(inplace=True))
             blocks.append(nn.Dropout(0.5))
 

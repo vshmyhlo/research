@@ -21,6 +21,7 @@ class LJ(torch.utils.data.Dataset):
         sample = self.metadata.loc[i]
 
         input = {
+            'id': sample['id'],
             'text': sample['text_norm'],
             'audio': sample['wav_path'],
         }

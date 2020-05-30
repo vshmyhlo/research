@@ -21,9 +21,10 @@ from tacotron.utils import griffin_lim
 from tacotron.vocab import CharVocab
 from transforms import ApplyTo, ToTorch, Extract
 from transforms.audio import LoadAudio
-from transforms.text import VocabEncode
+from transforms.text import VocabEncode, Normalize
 from utils import WarmupCosineAnnealingLR
 from utils import compute_nrow
+from utils import entropy
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -111,6 +112,7 @@ def build_scheduler(optimizer, config, steps_per_epoch):
 def build_transforms(vocab, config):
     train_transform = eval_transform = T.Compose([
         ApplyTo('text', T.Compose([
+            Normalize(),
             VocabEncode(vocab),
             ToTorch(),
         ])),
@@ -234,6 +236,17 @@ def masked_mse(input, target, mask):
     loss = (loss * mask).sum(1) / mask.sum(1)  # mean by T
 
     return loss
+
+
+def attention_entropy_loss(input, mask):
+    per_ent = entropy(input, dim=1)
+    per_ent = (per_ent * mask).sum(1) / mask.sum(1)  # mean by T
+
+    mask = mask.unsqueeze(1)
+    mean_ent = (input * mask).sum(2) / mask.sum(2)  # mean by T
+    mean_ent = entropy(mean_ent)
+
+    return per_ent - mean_ent
 
 
 if __name__ == '__main__':

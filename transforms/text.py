@@ -10,3 +10,11 @@ class VocabEncode(object):
         input = np.array(input, dtype=np.int64)
 
         return input
+
+
+class Normalize(object):
+    def __call__(self, input):
+        input = input.lower()
+
+        return input
+   

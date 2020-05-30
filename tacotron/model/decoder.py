@@ -1,6 +1,7 @@
 import torch
 from torch import nn as nn
 
+from tacotron.model.modules import ConvNorm1d, Conv1d, Linear
 from tacotron.utils import transpose_t_c
 
 
@@ -14,7 +15,7 @@ class Decoder(nn.Module):
         self.rnn_attention = nn.LSTMCell(base_features + base_features // 2, base_features * 2)
         self.rnn_decoder = nn.LSTMCell(base_features + base_features * 2, base_features * 2)
         self.rnn_dropout = nn.Dropout(0.1)
-        self.output_proj = nn.Linear(base_features + base_features * 2, num_mels)
+        self.output_proj = Linear(base_features + base_features * 2, num_mels)
 
     def forward(self, input, input_mask, target):
         target = torch.cat([
@@ -82,8 +83,7 @@ class PreNet(nn.Sequential):
     def __init__(self, num_mels, out_features):
         blocks = []
         for i in range(2):
-            blocks.append(nn.Conv1d(num_mels if i == 0 else out_features, out_features, 1, bias=False))
-            blocks.append(nn.BatchNorm1d(out_features))
+            blocks.append(ConvNorm1d(num_mels if i == 0 else out_features, out_features, 1, init='relu'))
             blocks.append(nn.ReLU(inplace=True))
             blocks.append(nn.Dropout(0.5))
 
@@ -94,11 +94,11 @@ class Attention(nn.Module):
     def __init__(self, query_features, key_features, mid_features):
         super().__init__()
 
-        self.query = nn.Linear(query_features, mid_features, bias=False)
-        self.key = nn.Linear(key_features, mid_features, bias=False)
+        self.query = Linear(query_features, mid_features, bias=False)
+        self.key = Linear(key_features, mid_features, bias=False)
         self.weight = LocationLayer(out_features=mid_features)
 
-        self.scores = nn.Linear(mid_features, 1)
+        self.scores = Linear(mid_features, 1)
 
     def forward(self, query, key, value, mask, weight):
         query = self.query(query.unsqueeze(1))
@@ -119,8 +119,8 @@ class LocationLayer(nn.Module):
     def __init__(self, out_features):
         super().__init__()
 
-        self.conv = nn.Conv1d(2, 32, 31, padding=31 // 2, bias=False)
-        self.linear = nn.Linear(32, out_features, bias=False)
+        self.conv = Conv1d(2, 32, 31, padding=31 // 2, bias=False)
+        self.linear = Linear(32, out_features, bias=False)
 
     def forward(self, input):
         input = self.conv(input)
