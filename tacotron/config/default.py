@@ -1,6 +1,6 @@
 from all_the_tools.config import Config as C
 
-epochs = 100
+epochs = 50
 
 config = C(
     seed=42,
