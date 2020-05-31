@@ -12,6 +12,7 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from scheduler import WarmupCosineAnnealingLR
 from tacotron.dataset import LJ
 from tacotron.model import Model
 from tacotron.sampler import BatchSampler
@@ -20,7 +21,7 @@ from tacotron.vocab import CharVocab
 from transforms import ApplyTo, ToTorch, Extract
 from transforms.audio import LoadAudio
 from transforms.text import VocabEncode, Normalize
-from utils import WarmupCosineAnnealingLR, compute_nrow, entropy
+from utils import compute_nrow, entropy
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 

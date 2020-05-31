@@ -9,17 +9,6 @@ from matplotlib import pyplot as plt
 COLORS = ('#1f77b4', '#ff7f0e', '#3ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf')
 
 
-class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.LambdaLR):
-    def __init__(self, optimizer, epoch_warmup, epoch_max):
-        def f(epoch):
-            if epoch < epoch_warmup:
-                return epoch / epoch_warmup
-            else:
-                return (np.cos((epoch - epoch_warmup) / (epoch_max - epoch_warmup) * np.pi) + 1) / 2
-
-        super().__init__(optimizer, f)
-
-
 class Zip(object):
     def __init__(self, *iterables):
         self.iterables = iterables

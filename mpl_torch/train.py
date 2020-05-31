@@ -17,8 +17,9 @@ from tqdm import tqdm
 
 from mpl_torch.model import Model
 from mpl_torch.utils import XUDataLoader
-from utils import WarmupCosineAnnealingLR, cross_entropy, entropy
+from scheduler import WarmupCosineAnnealingLR
 from utils import compute_nrow, one_hot
+from utils import cross_entropy, entropy
 
 NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

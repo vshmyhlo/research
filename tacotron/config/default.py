@@ -20,6 +20,6 @@ config = C(
             weight_decay=1e-6),
         sched=C(
             type='warmup_cosine',
-            epochs_warmup=int(epochs * 0.05))),
+            epochs_warmup=0.)),
     eval=C(
         batch_size=32))

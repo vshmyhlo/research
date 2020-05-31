@@ -16,7 +16,8 @@ from tqdm import tqdm
 
 from fix_match.utils import UDataset, XUDataLoader
 from mix_match.model import Model
-from utils import WarmupCosineAnnealingLR, compute_nrow, entropy, one_hot, weighted_sum
+from scheduler import WarmupCosineAnnealingLR
+from utils import compute_nrow, entropy, one_hot, weighted_sum
 
 NUM_CLASSES = 10
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
