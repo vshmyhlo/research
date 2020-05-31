@@ -4,13 +4,14 @@ epochs = 100
 
 config = C(
     seed=42,
-    epochs=epochs,
     sample_rate=22050,
     model=C(
         num_mels=80,
         base_features=256),
     train=C(
+        epochs=epochs,
         batch_size=32,
+        clip_grad_norm=None,
         opt=C(
             type='adam',
             lr=1e-3,

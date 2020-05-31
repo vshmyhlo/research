@@ -6,7 +6,7 @@ from torchaudio.functional import istft
 
 
 class Spectrogram(nn.Module):
-    def __init__(self, sample_rate, num_mels):
+    def __init__(self, sample_rate, num_mels, mean_std):
         super().__init__()
 
         # TODO:
@@ -18,6 +18,14 @@ class Spectrogram(nn.Module):
         filters = torch.tensor(librosa.filters.mel(sample_rate, n_fft=self.num_fft, n_mels=num_mels), dtype=torch.float)
         self.filters = nn.Parameter(filters, requires_grad=False)
         self.filters_inv = nn.Parameter(torch.pinverse(filters), requires_grad=False)
+
+        self.mean, self.std = [
+            nn.Parameter(x.view(1, x.size(0), 1), requires_grad=False)
+            for x in mean_std]
+
+    def forward(self, input):
+        input, _ = self.wave_to_spectra(input)
+        return input
 
     def wave_to_spectra(self, input):
         input = torch.stft(
@@ -32,11 +40,19 @@ class Spectrogram(nn.Module):
         phase = torch.atan2(imag, real)
 
         input = F.conv1d(input, self.filters.unsqueeze(-1))
+        # TODO: refactor
         input = self.c * torch.log(torch.clamp(input, min=1e-5))
+
+        # normalize
+        input = normalize(input, self.mean, self.std)
 
         return input, phase
 
     def spectra_to_wave(self, input, phase):
+        # inv normalize
+        input = inv_normalize(input, self.mean, self.std)
+
+        # TODO: refactor
         input = torch.exp(input / self.c)
         input = F.conv1d(input, self.filters_inv.unsqueeze(-1))
 
@@ -51,6 +67,10 @@ class Spectrogram(nn.Module):
 
         return input
 
-    def forward(self, input):
-        input, _ = self.wave_to_spectra(input)
-        return input
+
+def normalize(input, mean, std):
+    return (input - mean) / std
+
+
+def inv_normalize(input, mean, std):
+    return input * std + mean

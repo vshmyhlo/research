@@ -59,7 +59,8 @@ def main(config_path, **kwargs):
         num_workers=config.workers,
         collate_fn=collate_fn)
 
-    model = Model(config.model, vocab_size=len(vocab), sample_rate=config.sample_rate).to(DEVICE)
+    mean_std = torch.load('./tacotron/spectrogram_stats.pth')
+    model = Model(config.model, vocab_size=len(vocab), sample_rate=config.sample_rate, mean_std=mean_std).to(DEVICE)
     optimizer = build_optimizer(model.parameters(), config)
     scheduler = build_scheduler(optimizer, config, len(train_data_loader))
     saver = Saver({
@@ -70,7 +71,7 @@ def main(config_path, **kwargs):
     if config.restore_path is not None:
         saver.load(config.restore_path, keys=['model'])
 
-    for epoch in range(1, config.epochs + 1):
+    for epoch in range(1, config.train.epochs + 1):
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
         saver.save(
@@ -102,7 +103,7 @@ def build_scheduler(optimizer, config, steps_per_epoch):
         scheduler = WarmupCosineAnnealingLR(
             optimizer,
             epoch_warmup=config.train.sched.epochs_warmup * steps_per_epoch,
-            epoch_max=config.epochs * steps_per_epoch)
+            epoch_max=config.train.epochs * steps_per_epoch)
     else:
         raise AssertionError('invalid scheduler {}'.format(config.train.sched.type))
 
@@ -134,7 +135,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 
     model.train()
     for (text, text_mask), (audio, audio_mask) in \
-            tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
+            tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.train.epochs)):
         text, audio, text_mask, audio_mask = \
             [x.to(DEVICE) for x in [text, audio, text_mask, audio_mask]]
 
@@ -148,6 +149,8 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
 
         optimizer.zero_grad()
         loss.mean().backward()
+        if config.train.clip_grad_norm is not None:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.train.clip_grad_norm)
         optimizer.step()
         scheduler.step()
 
@@ -189,7 +192,7 @@ def eval_epoch(model, data_loader, epoch, config):
     with torch.no_grad():
         model.eval()
         for (text, text_mask), (audio, audio_mask) in \
-                tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
+                tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.train.epochs)):
             text, audio, text_mask, audio_mask = \
                 [x.to(DEVICE) for x in [text, audio, text_mask, audio_mask]]
 

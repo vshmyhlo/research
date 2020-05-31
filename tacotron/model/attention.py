@@ -10,7 +10,7 @@ class Attention(nn.Module):
 
         self.query = Linear(query_features, mid_features, bias=False, init='tanh')
         self.key = Linear(key_features, mid_features, bias=False, init='tanh')
-        self.weight = LocationLayer(out_features=mid_features, init='tanh')
+        self.weight = LocationLayer(out_features=mid_features, bias=False, init='tanh')
 
         self.scores = nn.Sequential(
             nn.Tanh(),
@@ -31,11 +31,11 @@ class Attention(nn.Module):
 
 
 class LocationLayer(nn.Module):
-    def __init__(self, out_features, init='linear'):
+    def __init__(self, out_features, bias=False, init='linear'):
         super().__init__()
 
-        self.conv = Conv1d(2, 32, 31, padding=31 // 2, bias=False)
-        self.linear = Linear(32, out_features, bias=False, init=init)
+        self.conv = Conv1d(2, 32, 31, padding=31 // 2, bias=bias)
+        self.linear = Linear(32, out_features, bias=bias, init=init)
 
     def forward(self, input):
         input = self.conv(input)

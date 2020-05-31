@@ -1,19 +1,10 @@
+# PyTorch implementation of [Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions](https://arxiv.org/abs/1712.05884)
+
+### TODO:
+* vocoder
 * split mel/stft
 * griffin lim only for stft part
-* check loss computation
-* normalize spectras (per-channel)
-* per sample forcing
-* mean loss by C
-* maximize mean entropy and minimize individual entropies
 * check processed inputs
-* better init
-* loss mean by C
-* use conv norm and linear norm everywhere
-* check training performance
-* cache spectrograms
-* bn for linear layers
-* layer norm? norms from LAS
-* xavier_uniform init for linear
-
-
-
+* check training speed
+* mask spectrogram padding after transformation
+* replace lstmcell with lstm
