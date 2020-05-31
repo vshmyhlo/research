@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics
 import torch
+import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
@@ -16,12 +17,15 @@ from tqdm import tqdm
 
 from mela.dataset import Dataset
 from mela.model import Model
+from mela.transforms import LoadImage
 from mela.utils import Concat
+from transforms import ApplyTo, Extract
 from utils import compute_nrow
 
 # TODO: compute stats
 # TODO: preds hist
 # TODO: sharpen via T
+# TODO: add loss to wide sigmoid values away
 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -33,23 +37,26 @@ STD = torch.tensor([0.2470, 0.2435, 0.2616])
 @click.option('--config-path', type=click.Path(), required=True)
 @click.option('--dataset-path', type=click.Path(), required=True)
 @click.option('--experiment-path', type=click.Path(), required=True)
+@click.option('--fold', type=click.INT, required=True)
 @click.option('--restore-path', type=click.Path())
 @click.option('--workers', type=click.INT, default=os.cpu_count())
 def main(config_path, **kwargs):
     config = load_config(
         config_path,
         **kwargs)
+    config.experiment_path = os.path.join(config.experiment_path, 'F{}'.format(config.fold))
+    del kwargs
 
     train_transform, eval_transform = build_transforms()
 
     train_data_loader = torch.utils.data.DataLoader(
-        Dataset(config.dataset_path, train=True, transform=train_transform),
+        Dataset(config.dataset_path, train=True, fold=config.fold, transform=train_transform),
         batch_size=config.train.batch_size,
         drop_last=True,
         shuffle=True,
         num_workers=config.workers)
     eval_data_loader = torch.utils.data.DataLoader(
-        Dataset(config.dataset_path, train=False, transform=eval_transform),
+        Dataset(config.dataset_path, train=False, fold=config.fold, transform=eval_transform),
         batch_size=config.eval.batch_size,
         num_workers=config.workers)
 
@@ -64,7 +71,7 @@ def main(config_path, **kwargs):
     if config.restore_path is not None:
         saver.load(config.restore_path, keys=['model'])
 
-    for epoch in range(1, config.epochs + 1):
+    for epoch in range(1, config.train.epochs + 1):
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
         saver.save(
@@ -104,23 +111,29 @@ def build_scheduler(optimizer, config, steps_per_epoch):
 
 
 def build_transforms():
-    def validate_size(input):
-        assert input.size() == (3, 32, 32)
-
-        return input
-
-    to_tensor_and_norm = T.Compose([
-        T.ToTensor(),
-        T.Normalize(mean=MEAN, std=STD),
-        validate_size,
-    ])
     train_transform = T.Compose([
-        T.RandomHorizontalFlip(),
-        T.RandomCrop(size=32, padding=int(32 * 0.125), padding_mode='reflect'),
-        to_tensor_and_norm,
+        LoadImage(T.Resize(224)),
+        ApplyTo(
+            'image',
+            T.Compose([
+                T.RandomCrop(224),
+                T.RandomHorizontalFlip(),
+                T.RandomVerticalFlip(),
+                T.ToTensor(),
+                T.Normalize(mean=MEAN, std=STD),
+            ])),
+        Extract(['image', 'target']),
     ])
     eval_transform = T.Compose([
-        to_tensor_and_norm,
+        LoadImage(T.Resize(224)),
+        ApplyTo(
+            'image',
+            T.Compose([
+                T.CenterCrop(224),
+                T.ToTensor(),
+                T.Normalize(mean=MEAN, std=STD),
+            ])),
+        Extract(['image', 'target']),
     ])
 
     return train_transform, eval_transform
@@ -133,7 +146,8 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     }
 
     model.train()
-    for images, targets in tqdm(data_loader, desc='epoch {}/{}, train'.format(epoch, config.epochs)):
+    for images, targets in \
+            tqdm(data_loader, desc='fold {}, epoch {}/{}, train'.format(config.fold, epoch, config.train.epochs)):
         images, targets = images.to(DEVICE), targets.to(DEVICE)
 
         logits = model(images)
@@ -168,7 +182,8 @@ def eval_epoch(model, data_loader, epoch, config):
 
     with torch.no_grad():
         model.eval()
-        for images, targets in tqdm(data_loader, desc='epoch {}/{}, eval'.format(epoch, config.epochs)):
+        for images, targets in \
+                tqdm(data_loader, desc='fold {}, epoch {}/{}, eval'.format(config.fold, epoch, config.train.epochs)):
             images, targets = images.to(DEVICE), targets.to(DEVICE)
 
             logits = model(images)
@@ -185,9 +200,8 @@ def eval_epoch(model, data_loader, epoch, config):
     print(all_targets.shape, all_logits.shape)
     fail
 
-    metrics = {k: metrics[k].compute_and_reset() for k in metrics}
     metrics = {
-        **metrics,
+        **{k: metrics[k].compute_and_reset() for k in metrics},
         **compute_metric(input=all_logits, target=all_targets),
     }
     roc_curve = plot_roc_curve(input=all_logits, target=all_targets)
@@ -204,7 +218,9 @@ def eval_epoch(model, data_loader, epoch, config):
 
 
 def compute_loss(input, target):
-    pass
+    loss = F.binary_cross_entropy_with_logits(input=input, target=target, reduction='none')
+
+    return loss
 
 
 def compute_metric(input, target):

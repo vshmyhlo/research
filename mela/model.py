@@ -7,15 +7,14 @@ class Model(nn.Module):
         super().__init__()
 
         if model == 'resnet50':
-            self.net = torchvision.models.resnet50(num_classes=1, pretrained=True)
+            self.net = torchvision.models.resnet50(pretrained=True)
         else:
             raise AssertionError('invalid model {}'.format(model))
 
+        self.net.fc = nn.Linear(self.net.fc.in_features, 1)
+
     def forward(self, input):
         input = self.net(input)
-        print(input.shape)
-        input = self.net[:, 1]
-        print(input.shape)
-        fali
+        input = input.squeeze(1)
 
         return input

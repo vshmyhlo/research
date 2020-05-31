@@ -1,8 +1,8 @@
 from all_the_tools.config import Config as C
 
-k = 0.5
+k = 1.
 epochs = 100
-batch_size = 128
+batch_size = 32
 
 config = C(
     seed=42,
