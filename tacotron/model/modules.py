@@ -1,4 +1,4 @@
-import torch.nn as nn
+from torch import nn as nn
 
 
 class ConvNorm1d(nn.Sequential):
@@ -24,3 +24,17 @@ class Linear(nn.Linear):
         nn.init.xavier_uniform_(self.weight, gain=nn.init.calculate_gain(init))
         if bias:
             nn.init.zeros_(self.bias)
+
+
+class Invertible(nn.Module):
+    def forward(self, *input, inverse=False):
+        if inverse:
+            return self.inv_f(*input)
+        else:
+            return self.f(*input)
+
+    def f(self, *input):
+        raise NotImplementedError
+
+    def inv_f(self, *input):
+        raise NotImplementedError

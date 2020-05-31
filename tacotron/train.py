@@ -13,18 +13,14 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from tacotron.dataset import LJ
-from tacotron.model.__init__ import Model
+from tacotron.model import Model
 from tacotron.sampler import BatchSampler
-from tacotron.utils import collate_fn
-from tacotron.utils import compute_sample_sizes
-from tacotron.utils import griffin_lim
+from tacotron.utils import collate_fn, compute_sample_sizes, griffin_lim
 from tacotron.vocab import CharVocab
 from transforms import ApplyTo, ToTorch, Extract
 from transforms.audio import LoadAudio
 from transforms.text import VocabEncode, Normalize
-from utils import WarmupCosineAnnealingLR
-from utils import compute_nrow
-from utils import entropy
+from utils import WarmupCosineAnnealingLR, compute_nrow, entropy
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 

@@ -19,9 +19,9 @@ class Model(nn.Module):
 
     def forward(self, input, input_mask, target, target_mask):
         with torch.no_grad():
-            target = self.spectra(target)
+            target, _ = self.spectra(target)
             target_mask = downsample_mask(target_mask, target.size(2))
-
+           
         input = self.encoder(input, input_mask)
         pre_output, weight = self.decoder(input, input_mask, target)
         output = pre_output + self.post_net(pre_output)

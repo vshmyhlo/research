@@ -45,14 +45,17 @@ def compute_sample_sizes(dataset):
 
 
 # TODO:
-def griffin_lim(spectra, spectra_module, n_iters=30):
-    angles = np.angle(np.exp(2j * np.pi * np.random.rand(spectra.size(0), 552, spectra.size(2))))
-    angles = torch.tensor(angles, dtype=torch.float, device=spectra.device)
-    audio = spectra_module.spectra_to_wave(spectra, angles).squeeze(1)
+def griffin_lim(spectra, module, n_iters=30):
+    spectra = module.norm(spectra, inverse=True)
+    spectra = module.log_mel(spectra, inverse=True)
 
+    angles = np.angle(np.exp(2j * np.pi * np.random.rand(*spectra.size())))
+    angles = torch.tensor(angles, dtype=torch.float, device=spectra.device)
+    audio = module.stft(spectra, angles, inverse=True).squeeze(1)
+  
     for i in range(n_iters):
-        _, angles = spectra_module.wave_to_spectra(audio)
-        audio = spectra_module.spectra_to_wave(spectra, angles).squeeze(1)
+        _, angles = module.stft(audio)
+        audio = module.stft(spectra, angles, inverse=True).squeeze(1)
 
     return audio
 
