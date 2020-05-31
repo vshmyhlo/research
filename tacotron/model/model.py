@@ -1,7 +1,10 @@
 import torch
 from torch import nn as nn
 
-from tacotron.model import ConvNorm1d, Spectrogram, Encoder, Decoder
+from tacotron.model.decoder import Decoder
+from tacotron.model.encoder import Encoder
+from tacotron.model.modules import ConvNorm1d
+from tacotron.model.spectrogram import Spectrogram
 from tacotron.utils import downsample_mask
 
 
