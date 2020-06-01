@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sklearn.metrics
 import torch
-import torch.nn.functional as F
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
@@ -15,10 +14,12 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from losses import sigmoid_focal_loss
 from mela.dataset import Dataset
 from mela.model import Model
 from mela.transforms import LoadImage
 from mela.utils import Concat
+from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
 from utils import compute_nrow
 
@@ -26,6 +27,20 @@ from utils import compute_nrow
 # TODO: preds hist
 # TODO: sharpen via T
 # TODO: add loss to wide sigmoid values away
+# TODO: spat trans net
+# TODO: ten-crop method
+# TODO: pick sharpening T on val
+# TODO: pick sharpening T on oof
+# TODO: progressive resize
+# TODO: fix seed
+# TODO: lookahead, ewa and friends
+# TODO: onecycle?
+# TODO: use metainfo
+# TODO: mosaic aug
+# TODO: https://towardsdatascience.com/explicit-auc-maximization-70beef6db14e
+# TODO: lsep loss
+# TODO: focal loss
+# TODO: soft f1 loss
 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -47,7 +62,7 @@ def main(config_path, **kwargs):
     config.experiment_path = os.path.join(config.experiment_path, 'F{}'.format(config.fold))
     del kwargs
 
-    train_transform, eval_transform = build_transforms()
+    train_transform, eval_transform = build_transforms(config)
 
     train_data_loader = torch.utils.data.DataLoader(
         Dataset(config.dataset_path, train=True, fold=config.fold, transform=train_transform),
@@ -104,36 +119,40 @@ def build_scheduler(optimizer, config, steps_per_epoch):
             optimizer,
             [epoch * steps_per_epoch for epoch in config.train.sched.epochs],
             gamma=0.1)
+    elif config.train.sched.type == 'warmup_cosine':
+        scheduler = WarmupCosineAnnealingLR(
+            optimizer,
+            epoch_warmup=config.train.sched.epochs_warmup * steps_per_epoch,
+            epoch_max=config.train.epochs * steps_per_epoch)
     else:
         raise AssertionError('invalid scheduler {}'.format(config.train.sched.type))
-
     return scheduler
 
 
-def build_transforms():
+def build_transforms(config):
     train_transform = T.Compose([
-        LoadImage(T.Resize(224)),
+        LoadImage(T.Resize(config.image_size)),
         ApplyTo(
             'image',
             T.Compose([
-                T.RandomCrop(224),
+                T.RandomCrop(config.crop_size),
                 T.RandomHorizontalFlip(),
                 T.RandomVerticalFlip(),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
-        Extract(['image', 'target']),
+        Extract(['image', 'meta', 'target']),
     ])
     eval_transform = T.Compose([
-        LoadImage(T.Resize(224)),
+        LoadImage(T.Resize(config.image_size)),
         ApplyTo(
             'image',
             T.Compose([
-                T.CenterCrop(224),
+                T.CenterCrop(config.crop_size),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
-        Extract(['image', 'target']),
+        Extract(['image', 'meta', 'target']),
     ])
 
     return train_transform, eval_transform
@@ -146,11 +165,11 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     }
 
     model.train()
-    for images, targets in \
+    for images, meta, targets in \
             tqdm(data_loader, desc='fold {}, epoch {}/{}, train'.format(config.fold, epoch, config.train.epochs)):
-        images, targets = images.to(DEVICE), targets.to(DEVICE)
+        images, meta, targets = images.to(DEVICE), {k: meta[k].to(DEVICE) for k in meta}, targets.to(DEVICE)
 
-        logits = model(images)
+        logits = model(images, meta)
         loss = compute_loss(input=logits, target=targets)
 
         metrics['loss'].update(loss.data.cpu().numpy())
@@ -182,11 +201,11 @@ def eval_epoch(model, data_loader, epoch, config):
 
     with torch.no_grad():
         model.eval()
-        for images, targets in \
+        for images, meta, targets in \
                 tqdm(data_loader, desc='fold {}, epoch {}/{}, eval'.format(config.fold, epoch, config.train.epochs)):
-            images, targets = images.to(DEVICE), targets.to(DEVICE)
+            images, meta, targets = images.to(DEVICE), {k: meta[k].to(DEVICE) for k in meta}, targets.to(DEVICE)
 
-            logits = model(images)
+            logits = model(images, meta)
             loss = compute_loss(input=logits, target=targets)
 
             metrics['loss'].update(loss.data.cpu().numpy())
@@ -196,9 +215,6 @@ def eval_epoch(model, data_loader, epoch, config):
 
     all_targets = all_targets.compute()
     all_logits = all_logits.compute()
-
-    print(all_targets.shape, all_logits.shape)
-    fail
 
     metrics = {
         **{k: metrics[k].compute_and_reset() for k in metrics},
@@ -218,7 +234,8 @@ def eval_epoch(model, data_loader, epoch, config):
 
 
 def compute_loss(input, target):
-    loss = F.binary_cross_entropy_with_logits(input=input, target=target, reduction='none')
+    # loss = F.binary_cross_entropy_with_logits(input=input, target=target, reduction='none')
+    loss = sigmoid_focal_loss(input=input, target=target)
 
     return loss
 

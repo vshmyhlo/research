@@ -3,11 +3,11 @@ from all_the_tools.metrics import Metric
 
 
 class Concat(Metric):
-    def __init__(self, dim=None):
+    def __init__(self, dim=0):
         super().__init__()
 
         self.dim = dim
-       
+
     def reset(self):
         self.values = []
 

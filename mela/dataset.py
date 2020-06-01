@@ -6,6 +6,8 @@ import torch.utils.data
 from sklearn.model_selection import StratifiedKFold
 
 FOLDS = 5
+SEX = [np.nan, 'male', 'female']
+SITE = [np.nan, 'lower extremity', 'torso', 'upper extremity', 'head/neck', 'palms/soles', 'oral/genital']
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -30,6 +32,11 @@ class Dataset(torch.utils.data.Dataset):
         input = {
             'id': sample['image_name'],
             'image': sample['dicom_path'],
+            'meta': {
+                'age': np.array(sample['age_approx'], dtype=np.float32),
+                'sex': np.array(SEX.index(sample['sex']), dtype=np.int64),
+                'site': np.array(SITE.index(sample['anatom_site_general_challenge']), dtype=np.int64),
+            },
             'target': np.array(sample['target'], dtype=np.float32),
         }
 
