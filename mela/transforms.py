@@ -54,7 +54,7 @@ class RandomResizedCrop(object):
 
         crop_size = round(self.size * 2**p)
         max_size = round(self.size * self.ratio[1])
-       
+
         input = T.Resize(max_size)(input)
         input = T.RandomCrop(crop_size)(input)
         input = T.Resize(self.size)(input)

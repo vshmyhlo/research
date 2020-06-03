@@ -9,8 +9,7 @@ class Model(nn.Module):
     def __init__(self, model):
         super().__init__()
 
-        if model == 'resnet50':
-            # self.net = torchvision.models.resnet50(pretrained=True)
+        if model == 'effnet-b0':
             self.net = EfficientNet.from_pretrained('efficientnet-b0')
         else:
             raise AssertionError('invalid model {}'.format(model))
@@ -23,7 +22,7 @@ class Model(nn.Module):
         self.net._dropout = self.net._fc = nn.Identity()
 
     def forward(self, input, meta):
-        input = self.net(input)
+        input = self.net(input) + self.meta(meta)
         input = self.output(input)
         input = input.squeeze(1)
 
@@ -36,6 +35,8 @@ class Meta(nn.Module):
 
         self.age_0 = nn.Parameter(torch.FloatTensor(1, mid_features))
         self.age_1 = nn.Parameter(torch.FloatTensor(1, mid_features))
+        self.age_nan = nn.Parameter(torch.FloatTensor(1, mid_features))
+
         self.sex = nn.Embedding(3, mid_features)
         self.site = nn.Embedding(7, mid_features)
 
@@ -50,13 +51,14 @@ class Meta(nn.Module):
 
     def forward(self, input):
         age = (input['age'] / 100.).unsqueeze(1)
+        age_is_nan = torch.isnan(age)
         age = weighted_sum(self.age_0, self.age_1, age)
+        age = torch.where(age_is_nan, self.age_nan, age)
+       
         sex = self.sex(input['sex'])
         site = self.site(input['site'])
 
         input = torch.cat([age, sex, site], 1)
         input = self.output(input)
-
-        # print(input.mean())
 
         return input

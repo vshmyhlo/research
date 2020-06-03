@@ -15,21 +15,21 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from losses import lsep_loss
 from losses import sigmoid_cross_entropy
 from mela.dataset import Dataset
 from mela.model import Model
 from mela.sampler import BatchSampler
-from mela.transforms import LoadImage, RandomResizedCrop
+from mela.transforms import LoadImage
 from mela.utils import Concat
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
 from utils import compute_nrow, random_seed
 
-# TODO: no sub-crop
 # TODO: compute stats
-# TODO: very large lr
-# TODO: pick sharpening T
-# TODO: preds hist
+# TODO: probs hist
+# TODO: double-batch
+# TODO:
 # TODO: better eda
 # TODO: add loss to wide sigmoid values away
 # TODO: spat trans net
@@ -38,17 +38,14 @@ from utils import compute_nrow, random_seed
 # TODO: aspect ratio distortion
 # TODO: progressive resize
 # TODO: fix seed
-# TODO: lookahead, ewa and friends
-# TODO: onecycle?
 # TODO: use metainfo
 # TODO: mosaic aug
 # TODO: https://towardsdatascience.com/explicit-auc-maximization-70beef6db14e
-# TODO: lsep loss
-# TODO: focal loss
-# TODO: soft f1 loss
-# TODO: lookahead
+# TODO: predict other classes
+# TODO: focal loss after sampler fix
+# TODO: soft f1 loss after sampler fix
 # TODO: aug
-# TODO: mixup/cutmix
+# TODO: mixup/cutmix after sampler fix
 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -153,11 +150,10 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
-                RandomResizedCrop(config.crop_size),
+                T.RandomCrop(config.crop_size),
                 T.RandomHorizontalFlip(),
                 T.RandomVerticalFlip(),
                 T.ColorJitter(0.1, 0.1, 0.1),
-                # ColorConstancy(),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
@@ -169,7 +165,6 @@ def build_transforms(config):
             'image',
             T.Compose([
                 T.CenterCrop(config.crop_size),
-                # ColorConstancy(),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
@@ -192,7 +187,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         # images, targets = cut_mix(images, targets, alpha=1.)
 
         logits = model(images, meta)
-        loss = compute_loss(input=logits, target=targets)
+        loss = compute_loss(input=logits, target=targets, config=config)
 
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
@@ -228,7 +223,7 @@ def eval_epoch(model, data_loader, epoch, config, suffix=''):
             images, meta, targets = images.to(DEVICE), {k: meta[k].to(DEVICE) for k in meta}, targets.to(DEVICE)
 
             logits = model(images, meta)
-            loss = compute_loss(input=logits, target=targets)
+            loss = compute_loss(input=logits, target=targets, config=config)
 
             metrics['loss'].update(loss.data.cpu().numpy())
 
@@ -255,14 +250,23 @@ def eval_epoch(model, data_loader, epoch, config, suffix=''):
     writer.close()
 
 
-def compute_loss(input, target):
-    loss = [
-        sigmoid_cross_entropy(input=input, target=target),
-        # lsep_loss(input=input, target=target),
-        # sigmoid_focal_loss(input=input, target=target),
-        # f1_loss(input=input.sigmoid(), target=target),
-    ]
+def compute_loss(input, target, config):
+    def f(input, target, name):
+        if name == 'ce':
+            return sigmoid_cross_entropy(input=input, target=target)
+        elif name == 'lsep':
+            return lsep_loss(input=input, target=target)
+        else:
+            raise AssertionError('invalid loss {}'.format(name))
 
+    # loss = [
+    #     # sigmoid_focal_loss(input=input, target=target),
+    #     # f1_loss(input=input.sigmoid(), target=target),
+    # ]
+
+    loss = [
+        f(input=input, target=target, name=name)
+        for name in config.train.loss]
     loss = sum(x.mean() for x in loss)
 
     return loss
