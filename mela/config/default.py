@@ -1,8 +1,7 @@
 from all_the_tools.config import Config as C
 
-k = 2.
 epochs = 30
-batch_size = 32
+batch_size = 54
 
 config = C(
     seed=42,
@@ -11,14 +10,15 @@ config = C(
     model='resnet50',
     train=C(
         epochs=epochs,
-        batch_size=int(batch_size * k),
+        batch_size=None,
         opt=C(
             type='sgd',
-            lr=0.1 * k,
+            lr=0.1,
             momentum=0.9,
-            weight_decay=1e-4),
+            weight_decay=1e-4,
+            ema=0.995),
         sched=C(
             type='warmup_cosine',
-            epochs_warmup=1)),
+            epochs_warmup=0)),
     eval=C(
-        batch_size=int(batch_size * k)))
+        batch_size=None))

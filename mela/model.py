@@ -23,7 +23,7 @@ class Model(nn.Module):
         self.net._dropout = self.net._fc = nn.Identity()
 
     def forward(self, input, meta):
-        input = self.net(input) + self.meta(meta)
+        input = self.net(input)
         input = self.output(input)
         input = input.squeeze(1)
 
@@ -45,15 +45,18 @@ class Meta(nn.Module):
             nn.Linear(mid_features * 3, out_features))
 
         for w in [self.age_0, self.age_1, self.sex.weight, self.site.weight]:
-            nn.init.normal_(w, 0., 0.1)
+            nn.init.normal_(w)
+        nn.init.kaiming_normal_(self.output[2].weight, nonlinearity='linear')
 
     def forward(self, input):
-        age = (input['age'] / 100).unsqueeze(1)
+        age = (input['age'] / 100.).unsqueeze(1)
         age = weighted_sum(self.age_0, self.age_1, age)
         sex = self.sex(input['sex'])
         site = self.site(input['site'])
 
         input = torch.cat([age, sex, site], 1)
         input = self.output(input)
-       
+
+        # print(input.mean())
+
         return input

@@ -10,27 +10,32 @@ import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
 from all_the_tools.metrics import Last, Mean
+from all_the_tools.torch.optim import EMA, LookAhead
 from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from losses import sigmoid_focal_loss
+from losses import sigmoid_cross_entropy
 from mela.dataset import Dataset
 from mela.model import Model
-from mela.transforms import LoadImage
+from mela.sampler import BatchSampler
+from mela.transforms import LoadImage, RandomResizedCrop
 from mela.utils import Concat
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
-from utils import compute_nrow
+from utils import compute_nrow, random_seed
 
+# TODO: no sub-crop
 # TODO: compute stats
+# TODO: very large lr
+# TODO: pick sharpening T
 # TODO: preds hist
-# TODO: sharpen via T
+# TODO: better eda
 # TODO: add loss to wide sigmoid values away
 # TODO: spat trans net
 # TODO: ten-crop method
-# TODO: pick sharpening T on val
-# TODO: pick sharpening T on oof
+# TODO: https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/154876
+# TODO: aspect ratio distortion
 # TODO: progressive resize
 # TODO: fix seed
 # TODO: lookahead, ewa and friends
@@ -41,6 +46,9 @@ from utils import compute_nrow
 # TODO: lsep loss
 # TODO: focal loss
 # TODO: soft f1 loss
+# TODO: lookahead
+# TODO: aug
+# TODO: mixup/cutmix
 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -61,18 +69,22 @@ def main(config_path, **kwargs):
         **kwargs)
     config.experiment_path = os.path.join(config.experiment_path, 'F{}'.format(config.fold))
     del kwargs
+    random_seed(config.seed)
 
     train_transform, eval_transform = build_transforms(config)
 
+    train_dataset = Dataset(config.dataset_path, train=True, fold=config.fold, transform=train_transform)
+    eval_dataset = Dataset(config.dataset_path, train=False, fold=config.fold, transform=eval_transform)
+
     train_data_loader = torch.utils.data.DataLoader(
-        Dataset(config.dataset_path, train=True, fold=config.fold, transform=train_transform),
-        batch_size=config.train.batch_size,
-        drop_last=True,
-        shuffle=True,
+        train_dataset,
+        batch_sampler=BatchSampler(
+            train_dataset.data['target'], shuffle=True, drop_last=True),
         num_workers=config.workers)
     eval_data_loader = torch.utils.data.DataLoader(
-        Dataset(config.dataset_path, train=False, fold=config.fold, transform=eval_transform),
-        batch_size=config.eval.batch_size,
+        eval_dataset,
+        batch_sampler=BatchSampler(
+            eval_dataset.data['target'], shuffle=False, drop_last=False),
         num_workers=config.workers)
 
     model = Model(config.model).to(DEVICE)
@@ -87,8 +99,11 @@ def main(config_path, **kwargs):
         saver.load(config.restore_path, keys=['model'])
 
     for epoch in range(1, config.train.epochs + 1):
+        optimizer.train()
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        optimizer.eval()
+        eval_epoch(model, eval_data_loader, epoch=epoch, config=config, suffix='ema')
         saver.save(
             os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
             epoch=epoch)
@@ -109,6 +124,9 @@ def build_optimizer(parameters, config):
             weight_decay=config.train.opt.weight_decay)
     else:
         raise AssertionError('invalid optimizer {}'.format(config.train.opt.type))
+
+    optimizer = LookAhead(optimizer, lr=0.5, num_steps=5)
+    optimizer = EMA(optimizer, momentum=config.train.opt.ema, num_steps=1)
 
     return optimizer
 
@@ -135,9 +153,11 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
-                T.RandomCrop(config.crop_size),
+                RandomResizedCrop(config.crop_size),
                 T.RandomHorizontalFlip(),
                 T.RandomVerticalFlip(),
+                T.ColorJitter(0.1, 0.1, 0.1),
+                # ColorConstancy(),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
@@ -149,6 +169,7 @@ def build_transforms(config):
             'image',
             T.Compose([
                 T.CenterCrop(config.crop_size),
+                # ColorConstancy(),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
@@ -168,6 +189,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     for images, meta, targets in \
             tqdm(data_loader, desc='fold {}, epoch {}/{}, train'.format(config.fold, epoch, config.train.epochs)):
         images, meta, targets = images.to(DEVICE), {k: meta[k].to(DEVICE) for k in meta}, targets.to(DEVICE)
+        # images, targets = cut_mix(images, targets, alpha=1.)
 
         logits = model(images, meta)
         loss = compute_loss(input=logits, target=targets)
@@ -192,7 +214,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     writer.close()
 
 
-def eval_epoch(model, data_loader, epoch, config):
+def eval_epoch(model, data_loader, epoch, config, suffix=''):
     metrics = {
         'loss': Mean(),
     }
@@ -221,7 +243,7 @@ def eval_epoch(model, data_loader, epoch, config):
         **compute_metric(input=all_logits, target=all_targets),
     }
     roc_curve = plot_roc_curve(input=all_logits, target=all_targets)
-    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
+    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval', suffix))
     with torch.no_grad():
         for k in metrics:
             writer.add_scalar(k, metrics[k], global_step=epoch)
@@ -234,8 +256,14 @@ def eval_epoch(model, data_loader, epoch, config):
 
 
 def compute_loss(input, target):
-    # loss = F.binary_cross_entropy_with_logits(input=input, target=target, reduction='none')
-    loss = sigmoid_focal_loss(input=input, target=target)
+    loss = [
+        sigmoid_cross_entropy(input=input, target=target),
+        # lsep_loss(input=input, target=target),
+        # sigmoid_focal_loss(input=input, target=target),
+        # f1_loss(input=input.sigmoid(), target=target),
+    ]
+
+    loss = sum(x.mean() for x in loss)
 
     return loss
 

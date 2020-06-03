@@ -1,4 +1,5 @@
 import math
+import random
 
 import numpy as np
 import torch
@@ -25,6 +26,33 @@ def compute_nrow(images):
     nrow = math.ceil(math.sqrt(h * b / w))
 
     return nrow
+
+
+def cut_mix(images_0, labels_0, alpha):
+    b, _, h, w = images_0.size()
+    perm = np.random.permutation(b)
+    images_1, labels_1 = images_0[perm], labels_0[perm]
+
+    lam = np.random.beta(alpha, alpha)
+    lam = np.maximum(lam, 1 - lam)
+
+    r_w = w * np.sqrt(1 - lam)
+    r_h = h * np.sqrt(1 - lam)
+
+    t = np.random.uniform(0, h - r_h)
+    l = np.random.uniform(0, w - r_w)
+    b = t + r_h
+    r = l + r_w
+
+    t, l, b, r = [np.round(p).astype(np.int32) for p in [t, l, b, r]]
+    assert 0 <= t <= b <= h
+    assert 0 <= l <= r <= w
+
+    images_0[:, :, t:b, l:r] = images_1[:, :, t:b, l:r]
+    images = images_0
+    labels = weighted_sum(labels_0, labels_1, lam)
+
+    return images, labels
 
 
 def make_grid(images):
@@ -83,3 +111,15 @@ def entropy(input, dim=-1, eps=1e-8):
 
 def weighted_sum(left, right, a):
     return a * left + (1 - a) * right
+
+
+def random_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    # torch.cuda.manual_seed(seed)
+    # torch.cuda.manual_seed_all(seed)

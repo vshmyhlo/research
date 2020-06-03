@@ -31,7 +31,7 @@ class Dataset(torch.utils.data.Dataset):
 
         input = {
             'id': sample['image_name'],
-            'image': sample['dicom_path'],
+            'image': sample['jpeg_path'],
             'meta': {
                 'age': np.array(sample['age_approx'], dtype=np.float32),
                 'sex': np.array(SEX.index(sample['sex']), dtype=np.int64),
@@ -47,7 +47,7 @@ class Dataset(torch.utils.data.Dataset):
 
 
 def load_data(path):
-    data = pd.read_csv(os.path.join(path, 'train.csv')).reset_index()
+    data = pd.read_csv(os.path.join(path, 'train.csv'), dtype={'target': bool}).reset_index()
     data['dicom_path'] = data['image_name'].apply(lambda x: os.path.join(path, 'train', '{}.dcm'.format(x)))
     data['jpeg_path'] = data['image_name'].apply(lambda x: os.path.join(path, 'jpeg', 'train', '{}.jpg'.format(x)))
 
