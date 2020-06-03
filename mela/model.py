@@ -52,9 +52,12 @@ class Meta(nn.Module):
     def forward(self, input):
         age = (input['age'] / 100.).unsqueeze(1)
         age_is_nan = torch.isnan(age)
-        age = weighted_sum(self.age_0, self.age_1, age)
-        age = torch.where(age_is_nan, self.age_nan, age)
+        age[age_is_nan] = 0.
        
+        age_0 = torch.where(age_is_nan, self.age_nan, self.age_0)
+        age_1 = torch.where(age_is_nan, self.age_nan, self.age_1)
+        age = weighted_sum(age_0, age_1, age)
+
         sex = self.sex(input['sex'])
         site = self.site(input['site'])
 
