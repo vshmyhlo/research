@@ -1,5 +1,6 @@
 import random
 
+import torchvision.transforms as T
 import torchvision.transforms.functional as F
 from PIL import Image
 
@@ -13,6 +14,21 @@ class RandomTranspose(object):
             return transpose(input)
 
         return input
+
+
+class RandomRotate4(object):
+    def __call__(self, input):
+        angle = random.choice([90 * i for i in range(4)])
+
+        return F.rotate(input, angle)
+
+
+class Random8(T.Compose):
+    def __init__(self):
+        super().__init__([
+            RandomRotate4(),
+            T.RandomVerticalFlip(),
+        ])
 
 
 def transpose(image):

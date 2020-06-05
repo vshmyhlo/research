@@ -23,7 +23,7 @@ from mela.transforms import LoadImage, RandomResizedCrop
 from mela.utils import Concat
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
-from transforms.image import RandomTranspose
+from transforms.image import Random8
 from utils import compute_nrow, random_seed
 
 # TODO: compute stats
@@ -156,9 +156,7 @@ def build_transforms(config):
             'image',
             T.Compose([
                 RandomResizedCrop(config.crop_size, scale=(1., 1.)),
-                RandomTranspose(),
-                T.RandomHorizontalFlip(),
-                T.RandomVerticalFlip(),
+                Random8(),
                 T.ColorJitter(0.1, 0.1, 0.1),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
