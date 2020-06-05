@@ -44,18 +44,15 @@ class ColorConstancy(object):
 
 
 class RandomResizedCrop(object):
-    def __init__(self, size, ratio=(0.875, 1 / 0.875)):
+    def __init__(self, size, scale=(0.875, 1 / 0.875)):
         self.size = size
-        self.ratio = ratio
+        self.scale = scale
 
     def __call__(self, input):
-        # p = np.linspace(np.log2(self.ratio[0]), np.log2(self.ratio[1]), 5)
-        p = np.random.uniform(np.log2(self.ratio[0]), np.log2(self.ratio[1]))
+        p = np.random.uniform(np.log2(self.scale[0]), np.log2(self.scale[1]))
 
         crop_size = round(self.size * 2**p)
-        max_size = round(self.size * self.ratio[1])
 
-        input = T.Resize(max_size)(input)
         input = T.RandomCrop(crop_size)(input)
         input = T.Resize(self.size)(input)
 

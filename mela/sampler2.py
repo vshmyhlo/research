@@ -1,4 +1,5 @@
 import math
+from itertools import chain
 
 import numpy as np
 import torch.utils.data
@@ -28,6 +29,9 @@ class BalancedSampler(torch.utils.data.Sampler):
             batches.append(batch)
         assert len(pos) == 0
 
+        if self.drop_last:
+            batches = tmp(batches)
+
         if not self.drop_last:
             batch = []
             while len(neg) > 0:
@@ -43,5 +47,16 @@ class BalancedSampler(torch.utils.data.Sampler):
         size = self.data.sum()
         if not self.drop_last:
             size += 1
+        else:
+            size = math.floor(size / 5)
 
         return size
+
+
+def tmp(batches):
+    batches = batches[:math.floor(len(batches) / 5) * 5]
+    batches = [
+        list(chain(*[batches[i + j] for j in range(5)]))
+        for i in range(0, len(batches), 5)]
+
+    return batches

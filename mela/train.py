@@ -15,37 +15,38 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from losses import lsep_loss
-from losses import sigmoid_cross_entropy
-from mela.dataset import Dataset
+from losses import lsep_loss, f1_loss, sigmoid_cross_entropy
+from mela.dataset import Dataset2020, ConcatDataset, Dataset2019
 from mela.model import Model
-from mela.sampler import BatchSampler
-from mela.transforms import LoadImage
+from mela.sampler import BalancedSampler
+from mela.transforms import LoadImage, RandomResizedCrop
 from mela.utils import Concat
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
+from transforms.image import RandomTranspose
 from utils import compute_nrow, random_seed
 
 # TODO: compute stats
 # TODO: probs hist
-# TODO: double-batch
-# TODO:
+# TODO: double batch size
 # TODO: better eda
-# TODO: add loss to wide sigmoid values away
 # TODO: spat trans net
-# TODO: ten-crop method
+# TODO: TTA / ten-crop
+# TODO: oversample
 # TODO: https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/154876
+# TODO: check extarnal data intersection
+# TODO: check external meta
+# TODO: merge external targets
 # TODO: aspect ratio distortion
-# TODO: progressive resize
-# TODO: fix seed
 # TODO: use metainfo
 # TODO: mosaic aug
 # TODO: https://towardsdatascience.com/explicit-auc-maximization-70beef6db14e
 # TODO: predict other classes
 # TODO: focal loss after sampler fix
-# TODO: soft f1 loss after sampler fix
-# TODO: aug
+# TODO: shear, rotate, other augs from torch transforms
 # TODO: mixup/cutmix after sampler fix
+# TODO: drop unknown
+# TODO: progressive resize
 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -70,17 +71,21 @@ def main(config_path, **kwargs):
 
     train_transform, eval_transform = build_transforms(config)
 
-    train_dataset = Dataset(config.dataset_path, train=True, fold=config.fold, transform=train_transform)
-    eval_dataset = Dataset(config.dataset_path, train=False, fold=config.fold, transform=eval_transform)
+    train_dataset = ConcatDataset([
+        Dataset2020(os.path.join(config.dataset_path, '2020'), train=True, fold=config.fold, transform=train_transform),
+        Dataset2019(os.path.join(config.dataset_path, '2019'), transform=train_transform),
+    ])
+    eval_dataset = Dataset2020(
+        os.path.join(config.dataset_path, '2020'), train=False, fold=config.fold, transform=eval_transform)
 
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_sampler=BatchSampler(
+        batch_sampler=BalancedSampler(
             train_dataset.data['target'], shuffle=True, drop_last=True),
         num_workers=config.workers)
     eval_data_loader = torch.utils.data.DataLoader(
         eval_dataset,
-        batch_sampler=BatchSampler(
+        batch_sampler=BalancedSampler(
             eval_dataset.data['target'], shuffle=False, drop_last=False),
         num_workers=config.workers)
 
@@ -150,7 +155,8 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
-                T.RandomCrop(config.crop_size),
+                RandomResizedCrop(config.crop_size, scale=(1., 1.)),
+                RandomTranspose(),
                 T.RandomHorizontalFlip(),
                 T.RandomVerticalFlip(),
                 T.ColorJitter(0.1, 0.1, 0.1),
@@ -256,12 +262,13 @@ def compute_loss(input, target, config):
             return sigmoid_cross_entropy(input=input, target=target)
         elif name == 'lsep':
             return lsep_loss(input=input, target=target)
+        elif name == 'f1':
+            return f1_loss(input=input.sigmoid(), target=target)
         else:
             raise AssertionError('invalid loss {}'.format(name))
 
     # loss = [
     #     # sigmoid_focal_loss(input=input, target=target),
-    #     # f1_loss(input=input.sigmoid(), target=target),
     # ]
 
     loss = [

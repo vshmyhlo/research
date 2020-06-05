@@ -22,7 +22,7 @@ class Model(nn.Module):
         self.net._dropout = self.net._fc = nn.Identity()
 
     def forward(self, input, meta):
-        input = self.net(input) + self.meta(meta)
+        input = self.net(input)  # + self.meta(meta)
         input = self.output(input)
         input = input.squeeze(1)
 
@@ -53,7 +53,7 @@ class Meta(nn.Module):
         age = (input['age'] / 100.).unsqueeze(1)
         age_is_nan = torch.isnan(age)
         age[age_is_nan] = 0.
-       
+
         age_0 = torch.where(age_is_nan, self.age_nan, self.age_0)
         age_1 = torch.where(age_is_nan, self.age_nan, self.age_1)
         age = weighted_sum(age_0, age_1, age)
