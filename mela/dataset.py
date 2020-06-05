@@ -23,9 +23,11 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
 
 class Dataset2020(torch.utils.data.Dataset):
     def __init__(self, path, train, fold, transform=None):
+        assert fold in range(1, FOLDS + 1)
+
         data = self.load_data(path)
         folds = StratifiedKFold(FOLDS, shuffle=True, random_state=42).split(data['target'], data['target'])
-        train_indices, eval_indices = list(folds)[fold]
+        train_indices, eval_indices = list(folds)[fold - 1]
         if train:
             data = data.loc[train_indices]
         else:
