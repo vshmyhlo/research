@@ -21,7 +21,7 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
         self.data = data.reset_index(drop=True)
 
 
-class Dataset2020(torch.utils.data.Dataset):
+class Dataset2020KFold(torch.utils.data.Dataset):
     def __init__(self, path, train, fold, transform=None):
         assert fold in range(1, FOLDS + 1)
 
@@ -78,6 +78,43 @@ class Dataset2020(torch.utils.data.Dataset):
             'atypical melanocytic proliferation': 'at_mel_prol',
         }
         data['diag'] = data['diagnosis'].apply(lambda x: diag_mapping[x])
+
+        return data
+
+
+class Dataset2020Test(torch.utils.data.Dataset):
+    def __init__(self, path, transform=None):
+        data = self.load_data(path)
+
+        self.data = data.reset_index(drop=True)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        sample = self.data.loc[i]
+
+        input = {
+            'id': sample['image_name'],
+            'image': sample['jpeg_path'],
+            'meta': {
+                'age': np.array(sample['age_approx'], dtype=np.float32),
+                'sex': np.array(SEX.index(sample['sex']), dtype=np.int64),
+                'site': np.array(SITE.index(sample['anatom_site_general_challenge']), dtype=np.int64),
+            },
+        }
+
+        if self.transform is not None:
+            input = self.transform(input)
+
+        return input
+
+    @staticmethod
+    def load_data(path):
+        data = pd.read_csv(os.path.join(path, 'test.csv'))
+        data['jpeg_path'] = data['image_name'].apply(lambda x: os.path.join(path, 'jpeg', 'test', '{}.jpg'.format(x)))
+        data = data.reset_index(drop=True)
 
         return data
 

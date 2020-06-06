@@ -16,7 +16,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from losses import lsep_loss, f1_loss, sigmoid_cross_entropy
-from mela.dataset import Dataset2020, ConcatDataset, Dataset2019
+from mela.dataset import Dataset2020KFold, ConcatDataset
 from mela.model import Model
 from mela.sampler import BalancedSampler
 from mela.transforms import LoadImage, RandomResizedCrop
@@ -26,6 +26,12 @@ from transforms import ApplyTo, Extract
 from transforms.image import Random8
 from utils import compute_nrow, random_seed
 
+# TODO: tta
+# TODO: save best cp
+# TODO: scheduler application
+# TODO: semi-sup, self-sup
+
+
 # TODO: compute stats
 # TODO: probs hist
 # TODO: double batch size
@@ -33,6 +39,8 @@ from utils import compute_nrow, random_seed
 # TODO: spat trans net
 # TODO: TTA / ten-crop
 # TODO: oversample
+# TODO: save best CP
+# TODO: copy config to exp-path
 # TODO: https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/154876
 # TODO: check extarnal data intersection
 # TODO: check external meta
@@ -72,12 +80,15 @@ def main(config_path, **kwargs):
     train_transform, eval_transform = build_transforms(config)
 
     train_dataset = ConcatDataset([
-        Dataset2020(os.path.join(config.dataset_path, '2020'), train=True, fold=config.fold, transform=train_transform),
-        Dataset2019(os.path.join(config.dataset_path, '2019'), transform=train_transform),
+        Dataset2020KFold(
+            os.path.join(config.dataset_path, '2020'), train=True, fold=config.fold, transform=train_transform),
+        # Dataset2019(
+        #     os.path.join(config.dataset_path, '2019'), transform=train_transform),
     ])
-    eval_dataset = Dataset2020(
+    eval_dataset = Dataset2020KFold(
         os.path.join(config.dataset_path, '2020'), train=False, fold=config.fold, transform=eval_transform)
 
+    assert config.train.batch_size == 'balanced'
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_sampler=BalancedSampler(
@@ -85,8 +96,9 @@ def main(config_path, **kwargs):
         num_workers=config.workers)
     eval_data_loader = torch.utils.data.DataLoader(
         eval_dataset,
-        batch_sampler=BalancedSampler(
-            eval_dataset.data['target'], shuffle=False, drop_last=False),
+        batch_size=config.eval.batch_size,
+        shuffle=False,
+        drop_last=False,
         num_workers=config.workers)
 
     model = Model(config.model).to(DEVICE)
@@ -103,11 +115,16 @@ def main(config_path, **kwargs):
     for epoch in range(1, config.train.epochs + 1):
         optimizer.train()
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
+
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        saver.save(
+            os.path.join(config.experiment_path, 'eval', 'checkpoint_{}.pth'.format(epoch)),
+            epoch=epoch)
+
         optimizer.eval()
         eval_epoch(model, eval_data_loader, epoch=epoch, config=config, suffix='ema')
         saver.save(
-            os.path.join(config.experiment_path, 'checkpoint_{}.pth'.format(epoch)),
+            os.path.join(config.experiment_path, 'eval', 'ema', 'checkpoint_{}.pth'.format(epoch)),
             epoch=epoch)
 
 
