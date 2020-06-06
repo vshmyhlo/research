@@ -20,15 +20,6 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 MEAN = torch.tensor([0.4914, 0.4822, 0.4465])
 STD = torch.tensor([0.2470, 0.2435, 0.2616])
 
-# FIXME:
-tmp = [
-    13,
-    14,
-    12,
-    9,
-    20,
-]
-
 
 @click.command()
 @click.option('--config-path', type=click.Path(), required=True)
@@ -56,18 +47,14 @@ def main(config_path, **kwargs):
 
     all_logits = Stack()
 
-    # FIXME:
-    # for fold in range(1, FOLDS + 1):
-    for fold in range(FOLDS):
+    for fold in range(1, FOLDS + 1):
         model = Model(config.model).to(DEVICE)
         saver = Saver({
             'model': model,
         })
-
-        restore_path = os.path.join(config.experiment_path, 'F{}'.format(fold),
-                                    'checkpoint_{}.pth'.format(tmp[fold]))
+        restore_path = os.path.join(config.experiment_path, 'F{}'.format(fold), 'checkpoint_best.pth')
         saver.load(restore_path, keys=['model'])
-
+       
         logits, all_ids = predict_fold(model, eval_data_loader, fold=fold)
 
         all_logits.update(logits.cpu())

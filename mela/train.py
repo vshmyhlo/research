@@ -27,9 +27,14 @@ from transforms.image import Random8
 from utils import compute_nrow, random_seed
 
 # TODO: tta
+# TODO: segmentation
+# TODO: dropcut
 # TODO: save best cp
 # TODO: scheduler application
 # TODO: semi-sup, self-sup
+# TODO: group k-fold
+# TODO: larger net, larger crop
+# TODO: no lsep, focal
 
 
 # TODO: compute stats

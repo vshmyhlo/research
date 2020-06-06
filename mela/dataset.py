@@ -3,7 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 import torch.utils.data
-from sklearn.model_selection import StratifiedKFold
+
+from model_selection import SimpleStratifiedGroupKFold
 
 FOLDS = 5
 SEX = [np.nan, 'male', 'female']
@@ -26,7 +27,9 @@ class Dataset2020KFold(torch.utils.data.Dataset):
         assert fold in range(1, FOLDS + 1)
 
         data = self.load_data(path)
-        folds = StratifiedKFold(FOLDS, shuffle=True, random_state=42).split(data['target'], data['target'])
+
+        folds = SimpleStratifiedGroupKFold(FOLDS, shuffle=True, random_state=42) \
+            .split(data['target'], data['target'], data['patient_id'])
         train_indices, eval_indices = list(folds)[fold - 1]
         if train:
             data = data.loc[train_indices]

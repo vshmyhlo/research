@@ -11,7 +11,7 @@ class LJ(torch.utils.data.Dataset):
         subsets = {}
         subsets['train'], subsets['test'] = train_test_split(metadata, test_size=0.1, random_state=42)
 
-        self.metadata = subsets[subset].reset_index()
+        self.metadata = subsets[subset].reset_index(drop=True)
         self.transform = transform
 
     def __len__(self):
