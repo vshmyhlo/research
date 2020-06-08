@@ -28,6 +28,20 @@ def compute_nrow(images):
     return nrow
 
 
+def mix_up(images_0, labels_0, alpha):
+    b = images_0.size(0)
+    perm = torch.randperm(b)
+    images_1, labels_1 = images_0[perm], labels_0[perm]
+
+    lam = torch.distributions.Beta(alpha, alpha).sample((b,)).to(images_0.device)
+    lam = torch.max(lam, 1 - lam)
+   
+    images = weighted_sum(images_0, images_1, lam.view(b, 1, 1, 1))
+    labels = weighted_sum(labels_0, labels_1, lam)
+
+    return images, labels
+
+
 def cut_mix(images_0, labels_0, alpha):
     b, _, h, w = images_0.size()
     perm = np.random.permutation(b)

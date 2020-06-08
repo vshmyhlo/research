@@ -1,7 +1,7 @@
 from all_the_tools.config import Config as C
 
 epochs = 20
-batch_size = 54
+batch_size = 64
 
 config = C(
     seed=42,
@@ -10,8 +10,8 @@ config = C(
     model='effnet-b0',
     train=C(
         epochs=epochs,
-        batch_size='balanced',
-        loss=['ce', 'lsep'],
+        batch_size=batch_size,
+        loss=['ce'],
         opt=C(
             type='adam',
             lr=1e-3,
@@ -22,4 +22,4 @@ config = C(
             type='warmup_cosine',
             epochs_warmup=0)),
     eval=C(
-        batch_size=32))
+        batch_size=batch_size))
