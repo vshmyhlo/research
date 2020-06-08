@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torchvision.transforms as T
 from PIL import Image
+from PIL.ImageDraw import Draw
 
 
 class LoadImage(object):
@@ -80,3 +81,20 @@ def color_constancy(input, power=6, gamma=None):
     input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
 
     return input
+
+
+class CircleMask(object):
+    def __init__(self, color):
+        self.color = tuple(color)
+
+    def __call__(self, input):
+        diam = min(input.size)
+        lt = tuple((s - diam) // 2 for s in input.size)
+        rb = tuple(x + diam for x in lt)
+      
+        mask = Image.new('1', input.size)
+        Draw(mask).ellipse((lt, rb), fill=True)
+        fill = Image.new(input.mode, input.size, color=self.color)
+        input = Image.composite(input, fill, mask)
+
+        return input

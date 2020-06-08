@@ -9,7 +9,7 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
-from all_the_tools.metrics import Last, Mean
+from all_the_tools.metrics import Last
 from all_the_tools.torch.optim import EMA, LookAhead
 from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
@@ -18,23 +18,25 @@ from tqdm import tqdm
 from losses import lsep_loss, f1_loss, sigmoid_cross_entropy
 from mela.dataset import Dataset2020KFold, ConcatDataset
 from mela.model import Model
-from mela.sampler import BalancedSampler
-from mela.transforms import LoadImage, RandomResizedCrop
-from mela.utils import Concat
+from mela.transforms import LoadImage, RandomResizedCrop, CircleMask
+from mela.utils import Concat, Mean
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
 from transforms.image import Random8
 from utils import compute_nrow, random_seed
 
-# TODO: tta
+# TODO: TTA / ten-crop
 # TODO: segmentation
 # TODO: dropcut
-# TODO: save best cp
-# TODO: scheduler application
+# TODO: scheduler app
+# TODO: error analysis
 # TODO: semi-sup, self-sup
-# TODO: group k-fold
 # TODO: larger net, larger crop
-# TODO: no lsep, focal
+# TODO: focal
+# TODO: mixup
+# TODO: pseudolabeling
+# TODO: external data
+# TODO: eval with tta
 
 
 # TODO: compute stats
@@ -42,9 +44,7 @@ from utils import compute_nrow, random_seed
 # TODO: double batch size
 # TODO: better eda
 # TODO: spat trans net
-# TODO: TTA / ten-crop
-# TODO: oversample
-# TODO: save best CP
+# TODO: focal loss
 # TODO: copy config to exp-path
 # TODO: https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/154876
 # TODO: check extarnal data intersection
@@ -57,6 +57,7 @@ from utils import compute_nrow, random_seed
 # TODO: predict other classes
 # TODO: focal loss after sampler fix
 # TODO: shear, rotate, other augs from torch transforms
+
 # TODO: mixup/cutmix after sampler fix
 # TODO: drop unknown
 # TODO: progressive resize
@@ -93,11 +94,11 @@ def main(config_path, **kwargs):
     eval_dataset = Dataset2020KFold(
         os.path.join(config.dataset_path, '2020'), train=False, fold=config.fold, transform=eval_transform)
 
-    assert config.train.batch_size == 'balanced'
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_sampler=BalancedSampler(
-            train_dataset.data['target'], shuffle=True, drop_last=True),
+        batch_size=config.train.batch_size,
+        shuffle=True,
+        drop_last=True,
         num_workers=config.workers)
     eval_data_loader = torch.utils.data.DataLoader(
         eval_dataset,
@@ -117,20 +118,23 @@ def main(config_path, **kwargs):
     if config.restore_path is not None:
         saver.load(config.restore_path, keys=['model'])
 
+    best_score = 0.
     for epoch in range(1, config.train.epochs + 1):
         optimizer.train()
         train_epoch(model, train_data_loader, optimizer, scheduler, epoch=epoch, config=config)
 
-        eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
-        saver.save(
-            os.path.join(config.experiment_path, 'eval', 'checkpoint_{}.pth'.format(epoch)),
-            epoch=epoch)
+        score = eval_epoch(model, eval_data_loader, epoch=epoch, config=config)
+        # saver.save(os.path.join(config.experiment_path, 'eval', 'checkpoint_{}.pth'.format(epoch)), epoch=epoch)
+        if score > best_score:
+            best_score = score
+            saver.save(os.path.join(config.experiment_path, 'checkpoint_best.pth'.format(epoch)), epoch=epoch)
 
         optimizer.eval()
-        eval_epoch(model, eval_data_loader, epoch=epoch, config=config, suffix='ema')
-        saver.save(
-            os.path.join(config.experiment_path, 'eval', 'ema', 'checkpoint_{}.pth'.format(epoch)),
-            epoch=epoch)
+        score = eval_epoch(model, eval_data_loader, epoch=epoch, config=config, suffix='ema')
+        # saver.save(os.path.join(config.experiment_path, 'eval', 'ema', 'checkpoint_{}.pth'.format(epoch)), epoch=epoch)
+        if score > best_score:
+            best_score = score
+            saver.save(os.path.join(config.experiment_path, 'checkpoint_best.pth'.format(epoch)), epoch=epoch)
 
 
 def build_optimizer(parameters, config):
@@ -177,9 +181,10 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
+                T.ColorJitter(0.1, 0.1, 0.1),
+                CircleMask(MEAN),
                 RandomResizedCrop(config.crop_size, scale=(1., 1.)),
                 Random8(),
-                T.ColorJitter(0.1, 0.1, 0.1),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
@@ -190,6 +195,7 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
+                CircleMask(MEAN),
                 T.CenterCrop(config.crop_size),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
@@ -202,20 +208,23 @@ def build_transforms(config):
 
 def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
     metrics = {
+        'images': Last(),
         'loss': Mean(),
         'lr': Last(),
     }
 
+    # loop over batches ################################################################################################
     model.train()
     for images, meta, targets in \
             tqdm(data_loader, desc='fold {}, epoch {}/{}, train'.format(config.fold, epoch, config.train.epochs)):
         images, meta, targets = images.to(DEVICE), {k: meta[k].to(DEVICE) for k in meta}, targets.to(DEVICE)
-        # images, targets = cut_mix(images, targets, alpha=1.)
+        # images, targets = mix_up(images, targets, alpha=1.)
 
         logits = model(images, meta)
         loss = compute_loss(input=logits, target=targets, config=config)
 
-        metrics['loss'].update(loss.data.cpu().numpy())
+        metrics['images'].update(images.data.cpu())
+        metrics['loss'].update(loss.data.cpu())
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
 
         optimizer.zero_grad()
@@ -223,27 +232,31 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         optimizer.step()
         scheduler.step()
 
-    metrics = {k: metrics[k].compute_and_reset() for k in metrics}
-    writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
+    # compute metrics ##################################################################################################
     with torch.no_grad():
-        for k in metrics:
-            writer.add_scalar(k, metrics[k], global_step=epoch)
-        writer.add_image('images', torchvision.utils.make_grid(
-            images, nrow=compute_nrow(images), normalize=True), global_step=epoch)
+        metrics = {k: metrics[k].compute_and_reset() for k in metrics}
 
-    writer.flush()
-    writer.close()
+        writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
+        writer.add_image('images', torchvision.utils.make_grid(
+            metrics['images'], nrow=compute_nrow(metrics['images']), normalize=True), global_step=epoch)
+        writer.add_scalar('loss', metrics['loss'], global_step=epoch)
+        writer.add_scalar('lr', metrics['lr'], global_step=epoch)
+
+        writer.flush()
+        writer.close()
 
 
 def eval_epoch(model, data_loader, epoch, config, suffix=''):
     metrics = {
-        'loss': Mean(),
+        'images': Concat(),
+        'targets': Concat(),
+        'logits': Concat(),
+        'loss': Concat(),
     }
-    all_targets = Concat()
-    all_logits = Concat()
 
+    # loop over batches ################################################################################################
+    model.eval()
     with torch.no_grad():
-        model.eval()
         for images, meta, targets in \
                 tqdm(data_loader, desc='fold {}, epoch {}/{}, eval'.format(config.fold, epoch, config.train.epochs)):
             images, meta, targets = images.to(DEVICE), {k: meta[k].to(DEVICE) for k in meta}, targets.to(DEVICE)
@@ -251,32 +264,44 @@ def eval_epoch(model, data_loader, epoch, config, suffix=''):
             logits = model(images, meta)
             loss = compute_loss(input=logits, target=targets, config=config)
 
-            metrics['loss'].update(loss.data.cpu().numpy())
+            metrics['images'].update(images.data.cpu())
+            metrics['targets'].update(targets.data.cpu())
+            metrics['logits'].update(logits.data.cpu())
+            metrics['loss'].update(loss.data.cpu())
 
-            all_targets.update(targets.cpu())
-            all_logits.update(logits.cpu())
-
-    all_targets = all_targets.compute()
-    all_logits = all_logits.compute()
-
-    metrics = {
-        **{k: metrics[k].compute_and_reset() for k in metrics},
-        **compute_metric(input=all_logits, target=all_targets),
-    }
-    roc_curve = plot_roc_curve(input=all_logits, target=all_targets)
-    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval', suffix))
+    # compute metrics ##################################################################################################
     with torch.no_grad():
-        for k in metrics:
-            writer.add_scalar(k, metrics[k], global_step=epoch)
-        writer.add_image('images', torchvision.utils.make_grid(
-            images, nrow=compute_nrow(images), normalize=True), global_step=epoch)
+        metrics = {k: metrics[k].compute_and_reset() for k in metrics}
+        metrics = {
+            **metrics,
+            **compute_metric(input=metrics['logits'], target=metrics['targets']),
+        }
+        images_hard_pos = topk_hardest(
+            metrics['images'], metrics['loss'], metrics['targets'] > 0.5, topk=config.eval.batch_size)
+        images_hard_neg = topk_hardest(
+            metrics['images'], metrics['loss'], metrics['targets'] <= 0.5, topk=config.eval.batch_size)
+        metrics['loss'] = metrics['loss'].mean()
+        roc_curve = plot_roc_curve(input=metrics['logits'], target=metrics['targets'])
+       
+        writer = SummaryWriter(os.path.join(config.experiment_path, 'eval', suffix))
+        writer.add_image('images/hard/pos', torchvision.utils.make_grid(
+            images_hard_pos, nrow=compute_nrow(images_hard_pos), normalize=True), global_step=epoch)
+        writer.add_image('images/hard/neg', torchvision.utils.make_grid(
+            images_hard_neg, nrow=compute_nrow(images_hard_neg), normalize=True), global_step=epoch)
+        writer.add_scalar('loss', metrics['loss'], global_step=epoch)
+        writer.add_scalar('roc_auc', metrics['roc_auc'], global_step=epoch)
         writer.add_figure('roc_curve', roc_curve, global_step=epoch)
 
-    writer.flush()
-    writer.close()
+        writer.flush()
+        writer.close()
+
+    return metrics['roc_auc']
 
 
 def compute_loss(input, target, config):
+    def has_valid_size(x):
+        return x.size() == (input.size(0),)
+
     def f(input, target, name):
         if name == 'ce':
             return sigmoid_cross_entropy(input=input, target=target)
@@ -294,7 +319,9 @@ def compute_loss(input, target, config):
     loss = [
         f(input=input, target=target, name=name)
         for name in config.train.loss]
-    loss = sum(x.mean() for x in loss)
+    assert all(map(has_valid_size, loss))
+    loss = sum(loss)
+    assert has_valid_size(loss)
 
     return loss
 
@@ -323,6 +350,15 @@ def plot_roc_curve(input, target):
     plt.ylim(0, 1)
 
     return fig
+
+
+def topk_hardest(input, loss, mask, topk):
+    input, loss = input[mask], loss[mask]
+
+    assert input.size(0) == loss.size(0)
+    _, indices = torch.topk(loss, topk)
+
+    return input[indices]
 
 
 if __name__ == '__main__':
