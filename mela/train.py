@@ -272,16 +272,13 @@ def eval_epoch(model, data_loader, epoch, config, suffix=''):
     # compute metrics ##################################################################################################
     with torch.no_grad():
         metrics = {k: metrics[k].compute_and_reset() for k in metrics}
-        metrics = {
-            **metrics,
-            **compute_metric(input=metrics['logits'], target=metrics['targets']),
-        }
+        metrics.update(compute_metric(input=metrics['logits'], target=metrics['targets']))
         images_hard_pos = topk_hardest(
             metrics['images'], metrics['loss'], metrics['targets'] > 0.5, topk=config.eval.batch_size)
         images_hard_neg = topk_hardest(
             metrics['images'], metrics['loss'], metrics['targets'] <= 0.5, topk=config.eval.batch_size)
-        metrics['loss'] = metrics['loss'].mean()
         roc_curve = plot_roc_curve(input=metrics['logits'], target=metrics['targets'])
+        metrics['loss'] = metrics['loss'].mean()
        
         writer = SummaryWriter(os.path.join(config.experiment_path, 'eval', suffix))
         writer.add_image('images/hard/pos', torchvision.utils.make_grid(
