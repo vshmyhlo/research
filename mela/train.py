@@ -18,7 +18,7 @@ from tqdm import tqdm
 from losses import lsep_loss, f1_loss, sigmoid_cross_entropy
 from mela.dataset import Dataset2020KFold, ConcatDataset
 from mela.model import Model
-from mela.transforms import LoadImage, RandomResizedCrop, CircleMask
+from mela.transforms import LoadImage, RandomResizedCrop
 from mela.utils import Concat, Mean
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
@@ -181,10 +181,9 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
-                T.ColorJitter(0.1, 0.1, 0.1),
-                CircleMask(MEAN),
                 RandomResizedCrop(config.crop_size, scale=(1., 1.)),
                 Random8(),
+                T.ColorJitter(0.1, 0.1, 0.1),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
             ])),
@@ -195,7 +194,6 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
-                CircleMask(MEAN),
                 T.CenterCrop(config.crop_size),
                 T.ToTensor(),
                 T.Normalize(mean=MEAN, std=STD),
@@ -279,7 +277,7 @@ def eval_epoch(model, data_loader, epoch, config, suffix=''):
             metrics['images'], metrics['loss'], metrics['targets'] <= 0.5, topk=config.eval.batch_size)
         roc_curve = plot_roc_curve(input=metrics['logits'], target=metrics['targets'])
         metrics['loss'] = metrics['loss'].mean()
-       
+
         writer = SummaryWriter(os.path.join(config.experiment_path, 'eval', suffix))
         writer.add_image('images/hard/pos', torchvision.utils.make_grid(
             images_hard_pos, nrow=compute_nrow(images_hard_pos), normalize=True), global_step=epoch)

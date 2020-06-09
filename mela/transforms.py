@@ -62,6 +62,7 @@ class RandomResizedCrop(object):
 
 def color_constancy(input, power=6, gamma=None):
     input = cv2.cvtColor(input, cv2.COLOR_RGB2BGR)
+    dtype = input.dtype
 
     if gamma is not None:
         input = input.astype(np.uint8)
@@ -78,6 +79,7 @@ def color_constancy(input, power=6, gamma=None):
     rgb_vec = 1 / (rgb_vec * np.sqrt(3))
     input = np.multiply(input, rgb_vec)
 
+    input = input.astype(dtype)
     input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
 
     return input
@@ -91,7 +93,7 @@ class CircleMask(object):
         diam = min(input.size)
         lt = tuple((s - diam) // 2 for s in input.size)
         rb = tuple(x + diam for x in lt)
-      
+
         mask = Image.new('1', input.size)
         Draw(mask).ellipse((lt, rb), fill=True)
         fill = Image.new(input.mode, input.size, color=self.color)
