@@ -18,21 +18,24 @@ from tqdm import tqdm
 from losses import lsep_loss, f1_loss, sigmoid_cross_entropy
 from mela.dataset import Dataset2020KFold, ConcatDataset
 from mela.model import Model
-from mela.transforms import LoadImage, RandomResizedCrop
+from mela.transforms import LoadImage
 from mela.utils import Concat, Mean
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
 from transforms.image import Random8
 from utils import compute_nrow, random_seed
 
+# TODO: average best cps based on their score
 # TODO: TTA / ten-crop
 # TODO: segmentation
 # TODO: dropcut
 # TODO: scheduler app
+# TODO: more color jitter
+# TODO: build model based on deltas with adjacent pixels
 # TODO: error analysis
 # TODO: semi-sup, self-sup
 # TODO: larger net, larger crop
-# TODO: focal
+# TODO: focal loss
 # TODO: mixup
 # TODO: pseudolabeling
 # TODO: external data
@@ -153,8 +156,8 @@ def build_optimizer(parameters, config):
     else:
         raise AssertionError('invalid optimizer {}'.format(config.train.opt.type))
 
-    optimizer = LookAhead(optimizer, lr=0.5, num_steps=5)
-    optimizer = EMA(optimizer, momentum=config.train.opt.ema, num_steps=1)
+    optimizer = LookAhead(optimizer, lr=config.train.opt.la.lr, num_steps=config.train.opt.la.steps)
+    optimizer = EMA(optimizer, momentum=config.train.opt.ema.mom, num_steps=config.train.opt.ema.steps)
 
     return optimizer
 
@@ -181,7 +184,7 @@ def build_transforms(config):
         ApplyTo(
             'image',
             T.Compose([
-                RandomResizedCrop(config.crop_size, scale=(1., 1.)),
+                T.RandomCrop(config.crop_size),
                 Random8(),
                 T.ColorJitter(0.1, 0.1, 0.1),
                 T.ToTensor(),
