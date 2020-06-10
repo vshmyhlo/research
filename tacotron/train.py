@@ -7,7 +7,8 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
-from all_the_tools.metrics import Last, Mean
+from all_the_tools.metrics import Last
+from all_the_tools.torch.metrics import Mean
 from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
@@ -141,7 +142,7 @@ def train_epoch(model, data_loader, optimizer, scheduler, epoch, config):
         loss = masked_mse(output, target, target_mask) + \
                masked_mse(pre_output, target, target_mask)
 
-        metrics['loss'].update(loss.data.cpu().numpy())
+        metrics['loss'].update(loss.data.cpu())
         metrics['lr'].update(np.squeeze(scheduler.get_last_lr()))
 
         optimizer.zero_grad()
@@ -198,7 +199,7 @@ def eval_epoch(model, data_loader, epoch, config):
             loss = masked_mse(output, target, target_mask) + \
                    masked_mse(pre_output, target, target_mask)
 
-            metrics['loss'].update(loss.data.cpu().numpy())
+            metrics['loss'].update(loss.data.cpu())
 
     writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
     with torch.no_grad():
