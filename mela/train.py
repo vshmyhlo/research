@@ -10,16 +10,16 @@ import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
 from all_the_tools.metrics import Last
+from all_the_tools.torch.metrics import Concat, Mean
 from all_the_tools.torch.optim import EMA, LookAhead
 from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from losses import lsep_loss, f1_loss, sigmoid_cross_entropy
+from losses import lsep_loss, f1_loss, sigmoid_cross_entropy, sigmoid_focal_loss
 from mela.dataset import Dataset2020KFold, ConcatDataset
 from mela.model import Model
 from mela.transforms import LoadImage
-from mela.utils import Concat, Mean
 from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
 from transforms.image import Random8
@@ -42,6 +42,8 @@ from utils import compute_nrow, random_seed
 # TODO: eval with tta
 
 
+# TODO: add other channels
+# TODO: b100
 # TODO: compute stats
 # TODO: probs hist
 # TODO: double batch size
@@ -303,16 +305,14 @@ def compute_loss(input, target, config):
     def f(input, target, name):
         if name == 'ce':
             return sigmoid_cross_entropy(input=input, target=target)
+        elif name == 'focal':
+            return sigmoid_focal_loss(input=input, target=target)
         elif name == 'lsep':
             return lsep_loss(input=input, target=target)
         elif name == 'f1':
             return f1_loss(input=input.sigmoid(), target=target)
         else:
             raise AssertionError('invalid loss {}'.format(name))
-
-    # loss = [
-    #     # sigmoid_focal_loss(input=input, target=target),
-    # ]
 
     loss = [
         f(input=input, target=target, name=name)

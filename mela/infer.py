@@ -6,13 +6,13 @@ import torch
 import torch.utils.data
 import torchvision.transforms as T
 from all_the_tools.config import load_config
+from all_the_tools.torch.metrics import Concat, Stack
 from all_the_tools.torch.utils import Saver
 from tqdm import tqdm
 
 from mela.dataset import FOLDS, Dataset2020Test
 from mela.model import Model
 from mela.transforms import LoadImage
-from mela.utils import Concat, Stack
 from transforms import ApplyTo, Extract
 from utils import random_seed
 
@@ -54,7 +54,7 @@ def main(config_path, **kwargs):
         })
         restore_path = os.path.join(config.experiment_path, 'F{}'.format(fold), 'checkpoint_best.pth')
         saver.load(restore_path, keys=['model'])
-       
+
         logits, all_ids = predict_fold(model, eval_data_loader, fold=fold)
 
         all_logits.update(logits.cpu())
