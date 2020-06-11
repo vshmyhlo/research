@@ -7,11 +7,22 @@ import torch.utils.data
 from model_selection import SimpleStratifiedGroupKFold
 
 FOLDS = 5
-SEX = [np.nan, 'male', 'female']
-SITE = [np.nan, 'lower extremity', 'torso', 'upper extremity', 'head/neck', 'palms/soles', 'oral/genital']
-
-C = ['unk', 'nev', 'ben_ker', 'mel', 'lich_ker', 'lent_nos', 'derm_fib', 'sq_cell_carc', 'bas_cell_carc', 'vasc_les',
-     'act_ker', 'at_mel_prol', 'caf_au_lait_mac']
+SEX_TO_ID = {
+    np.nan: 0,
+    'male': 1,
+    'female': 2,
+}
+SITE_TO_ID = {
+    np.nan: 0,
+    'lower extremity': 1,
+    'upper extremity': 2,
+    'torso': 3,
+    'anterior torso': 3,
+    'posterior torso': 3,
+    'head/neck': 4,
+    'palms/soles': 5,
+    'oral/genital': 6,
+}
 
 
 class ConcatDataset(torch.utils.data.ConcatDataset):
@@ -50,11 +61,10 @@ class Dataset2020KFold(torch.utils.data.Dataset):
             'image': sample['jpeg_path'],
             'meta': {
                 'age': np.array(sample['age_approx'], dtype=np.float32),
-                'sex': np.array(SEX.index(sample['sex']), dtype=np.int64),
-                'site': np.array(SITE.index(sample['anatom_site_general_challenge']), dtype=np.int64),
+                'sex': np.array(SEX_TO_ID[sample['sex']], dtype=np.int64),
+                'site': np.array(SITE_TO_ID[sample['anatom_site_general_challenge']], dtype=np.int64),
             },
             'target': np.array(sample['target'], dtype=np.float32),
-            'diag': np.array(C.index(sample['diag']), dtype=np.int64),
         }
 
         if self.transform is not None:
@@ -68,19 +78,6 @@ class Dataset2020KFold(torch.utils.data.Dataset):
         data['target'] = data['target'] == 1.
         data['jpeg_path'] = data['image_name'].apply(lambda x: os.path.join(path, 'jpeg', 'train', '{}.jpg'.format(x)))
         data = data.reset_index(drop=True)
-
-        diag_mapping = {
-            'unknown': 'unk',
-            'nevus': 'nev',
-            'melanoma': 'mel',
-            'seborrheic keratosis': 'ben_ker',
-            'lentigo NOS': 'lent_nos',
-            'lichenoid keratosis': 'lich_ker',
-            'solar lentigo': 'ben_ker',
-            'cafe-au-lait macule': 'caf_au_lait_mac',
-            'atypical melanocytic proliferation': 'at_mel_prol',
-        }
-        data['diag'] = data['diagnosis'].apply(lambda x: diag_mapping[x])
 
         return data
 
@@ -103,8 +100,8 @@ class Dataset2020Test(torch.utils.data.Dataset):
             'image': sample['jpeg_path'],
             'meta': {
                 'age': np.array(sample['age_approx'], dtype=np.float32),
-                'sex': np.array(SEX.index(sample['sex']), dtype=np.int64),
-                'site': np.array(SITE.index(sample['anatom_site_general_challenge']), dtype=np.int64),
+                'sex': np.array(SEX_TO_ID[sample['sex']], dtype=np.int64),
+                'site': np.array(SITE_TO_ID[sample['anatom_site_general_challenge']], dtype=np.int64),
             },
         }
 
@@ -139,12 +136,11 @@ class Dataset2019(torch.utils.data.Dataset):
             'id': sample['image'],
             'image': sample['jpeg_path'],
             'meta': {
-                'age': np.array(0, dtype=np.float32),
-                'sex': np.array(0, dtype=np.int64),
-                'site': np.array(0, dtype=np.int64),
+                'age': np.array(sample['age_approx'], dtype=np.float32),
+                'sex': np.array(SEX_TO_ID[sample['sex']], dtype=np.int64),
+                'site': np.array(SITE_TO_ID[sample['anatom_site_general']], dtype=np.int64),
             },
             'target': np.array(sample['target'], dtype=np.float32),
-            'diag': np.array(C.index(sample['diag']), dtype=np.int64),
         }
 
         if self.transform is not None:
@@ -155,23 +151,12 @@ class Dataset2019(torch.utils.data.Dataset):
     @staticmethod
     def load_data(path):
         data = pd.read_csv(os.path.join(path, 'ISIC_2019_Training_GroundTruth.csv'))
+        meta = pd.read_csv(os.path.join(path, 'ISIC_2019_Training_Metadata.csv'))
+        data = data.merge(meta, on='image', how='left')
+
+        data['target'] = data['MEL'] == 1.
         data['jpeg_path'] = data['image'].apply(
             lambda x: os.path.join(path, 'ISIC_2019_Training_Input', 'ISIC_2019_Training_Input', '{}.jpg'.format(x)))
         data = data.reset_index(drop=True)
-
-        diag_mapping = {
-            'MEL': 'mel',
-            'NV': 'nev',
-            'BCC': 'bas_cell_carc',
-            'AK': 'act_ker',
-            'BKL': 'ben_ker',
-            'DF': 'derm_fib',
-            'VASC': 'vasc_les',
-            'SCC': 'sq_cell_carc',
-            'UNK': 'unk',
-        }
-        one_hot = data[list(diag_mapping.keys())].values
-        data['diag'] = pd.Series(one_hot.argmax(1)).apply(lambda x: list(diag_mapping.values())[x])
-        data['target'] = data['diag'] == 'mel'
 
         return data
