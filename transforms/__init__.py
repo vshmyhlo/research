@@ -32,6 +32,16 @@ class ToTorch(object):
         return input
 
 
+class Map(object):
+    def __init__(self, transform):
+        self.transform = transform
+
+    def __call__(self, input):
+        input = [self.transform(x) for x in input]
+
+        return input
+
+
 class Resettable(object):
     def __init__(self, build_transform):
         self.build_transform = build_transform

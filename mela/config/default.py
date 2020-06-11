@@ -1,6 +1,6 @@
 from all_the_tools.config import Config as C
 
-epochs = 20
+epochs = 10
 batch_size = 64
 
 config = C(

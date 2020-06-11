@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from losses import lsep_loss, f1_loss, sigmoid_cross_entropy, sigmoid_focal_loss
-from mela.dataset import Dataset2020KFold, ConcatDataset
+from mela.dataset import Dataset2020KFold, ConcatDataset, Dataset2019
 from mela.model import Model
 from mela.transforms import LoadImage
 from scheduler import WarmupCosineAnnealingLR
@@ -28,28 +28,23 @@ from utils import compute_nrow, random_seed
 # TODO: average best cps based on their score
 # TODO: TTA / ten-crop
 # TODO: segmentation
+# TODO: external data
 # TODO: dropcut
 # TODO: scheduler app
 # TODO: more color jitter
 # TODO: build model based on deltas with adjacent pixels
 # TODO: error analysis
 # TODO: semi-sup, self-sup
-# TODO: larger net, larger crop
-# TODO: focal loss
-# TODO: mixup
+# TODO: larger net
+# TODO: meta
 # TODO: pseudolabeling
-# TODO: external data
 # TODO: eval with tta
-
-
 # TODO: add other channels
-# TODO: b100
 # TODO: compute stats
 # TODO: probs hist
 # TODO: double batch size
 # TODO: better eda
 # TODO: spat trans net
-# TODO: focal loss
 # TODO: copy config to exp-path
 # TODO: https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/154876
 # TODO: check extarnal data intersection
@@ -60,10 +55,7 @@ from utils import compute_nrow, random_seed
 # TODO: mosaic aug
 # TODO: https://towardsdatascience.com/explicit-auc-maximization-70beef6db14e
 # TODO: predict other classes
-# TODO: focal loss after sampler fix
 # TODO: shear, rotate, other augs from torch transforms
-
-# TODO: mixup/cutmix after sampler fix
 # TODO: drop unknown
 # TODO: progressive resize
 
@@ -93,8 +85,8 @@ def main(config_path, **kwargs):
     train_dataset = ConcatDataset([
         Dataset2020KFold(
             os.path.join(config.dataset_path, '2020'), train=True, fold=config.fold, transform=train_transform),
-        # Dataset2019(
-        #     os.path.join(config.dataset_path, '2019'), transform=train_transform),
+        Dataset2019(
+            os.path.join(config.dataset_path, '2019'), transform=train_transform),
     ])
     eval_dataset = Dataset2020KFold(
         os.path.join(config.dataset_path, '2020'), train=False, fold=config.fold, transform=eval_transform)

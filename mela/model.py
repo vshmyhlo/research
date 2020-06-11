@@ -14,6 +14,7 @@ class Model(nn.Module):
             raise AssertionError('invalid model {}'.format(model))
 
         self.net._fc = nn.Linear(self.net._fc.in_features, 1)
+        self.net._dropout = nn.Dropout(0.5)
         self.output = nn.Identity()
 
         # self.net._fc = nn.Linear(self.net._fc.in_features, 1)

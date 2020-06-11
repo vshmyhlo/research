@@ -31,6 +31,18 @@ class Random8(T.Compose):
         ])
 
 
+class TTA8(object):
+    def __call__(self, input):
+        input = [
+            F.rotate(input, 90 * i)
+            for i in range(4)
+        ]
+
+        input = input + [F.vflip(x) for x in input]
+       
+        return input
+
+
 def transpose(image):
     if not F._is_pil_image(image):
         raise TypeError('image should be PIL Image. Got {}'.format(type(image)))
