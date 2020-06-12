@@ -19,6 +19,7 @@ SITE_TO_ID = {
     'torso': 3,
     'anterior torso': 3,
     'posterior torso': 3,
+    'lateral torso': 3,
     'head/neck': 4,
     'palms/soles': 5,
     'oral/genital': 6,
