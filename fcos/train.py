@@ -1,9 +1,7 @@
-import argparse
 import gc
-import itertools
 import os
-import shutil
 
+import click
 import numpy as np
 import torch
 import torch.distributions
@@ -11,25 +9,28 @@ import torch.utils
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
+from all_the_tools.config import load_config
 from all_the_tools.metrics import Mean, Last
-from all_the_tools.torch.utils import Saver, seed_torch
+from all_the_tools.torch.utils import Saver
 from all_the_tools.transforms import ApplyTo
 from all_the_tools.utils import seed_python
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from detection.anchor_utils import compute_anchor
-from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
-from detection.box_utils import boxes_iou
-from detection.config import build_default_config
-from detection.datasets.coco import Dataset as CocoDataset
-from detection.datasets.wider import Dataset as WiderDataset
-from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
-from detection.map import per_class_precision_recall_to_map
-from detection.metrics import FPS, PerClassPR
-from detection.model import RetinaNet
-from detection.transform import Resize, BuildLabels, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
-from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
+from fcos.model import FCOS
+# from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
+# from detection.map import per_class_precision_recall_to_map
+# from detection.metrics import FPS, PerClassPR
+# from detection.model import RetinaNet
+from fcos.transforms import Resize, BuildLabels, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
+# from detection.anchor_utils import compute_anchor
+# from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
+# from detection.box_utils import boxes_iou
+# from detection.config import build_default_config
+from object_detection.datasets.coco import Dataset as CocoDataset
+from utils import random_seed
+
+# from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
 
 # TODO: clip boxes in decoding?
 # TODO: maybe use 1-based class indexing (maybe better not)
@@ -61,32 +62,27 @@ MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--config-path', type=str, required=True)
-parser.add_argument('--experiment-path', type=str, default='./tf_log/detection')
-parser.add_argument('--dataset-path', type=str, required=True)
-parser.add_argument('--restore-path', type=str)
-parser.add_argument('--workers', type=int, default=os.cpu_count())
-args = parser.parse_args()
-config = build_default_config()
-config.merge_from_file(args.config_path)
-config.freeze()
-os.makedirs(args.experiment_path, exist_ok=True)
-shutil.copy(args.config_path, args.experiment_path)
 
-if config.dataset == 'coco':
-    Dataset = CocoDataset
-elif config.dataset == 'wider':
-    Dataset = WiderDataset
-else:
-    raise AssertionError('invalid config.dataset {}'.format(config.dataset))
-
-ANCHOR_TYPES = list(itertools.product(config.anchors.ratios, config.anchors.scales))
-ANCHORS = [
-    [compute_anchor(size, ratio, scale) for ratio, scale in ANCHOR_TYPES]
-    if size is not None else None
-    for size in config.anchors.sizes
-]
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--config-path', type=str, required=True)
+# parser.add_argument('--experiment-path', type=str, default='./tf_log/detection')
+# parser.add_argument('--dataset-path', type=str, required=True)
+# parser.add_argument('--restore-path', type=str)
+# parser.add_argument('--workers', type=int, default=os.cpu_count())
+# args = parser.parse_args()
+# config = build_default_config()
+# config.merge_from_file(args.config_path)
+# config.freeze()
+# os.makedirs(args.experiment_path, exist_ok=True)
+# shutil.copy(args.config_path, args.experiment_path)
+#
+#
+# ANCHOR_TYPES = list(itertools.product(config.anchors.ratios, config.anchors.scales))
+# ANCHORS = [
+#     [compute_anchor(size, ratio, scale) for ratio, scale in ANCHOR_TYPES]
+#     if size is not None else None
+#     for size in config.anchors.sizes
+# ]
 
 
 def worker_init_fn(_):
@@ -307,9 +303,18 @@ def collate_fn(batch):
     return images, labels, anchors, dets
 
 
-def main():
-    seed_python(config.seed)
-    seed_torch(config.seed)
+@click.command()
+@click.option('--config-path', type=click.Path(), required=True)
+@click.option('--dataset-path', type=click.Path(), required=True)
+@click.option('--experiment-path', type=click.Path(), required=True)
+@click.option('--restore-path', type=click.Path())
+@click.option('--workers', type=click.INT, default=os.cpu_count())
+def main(config_path, **kwargs):
+    config = load_config(
+        config_path,
+        **kwargs)
+    del kwargs
+    random_seed(config.seed)
 
     train_transform = T.Compose([
         Resize(config.resize_size),
@@ -321,7 +326,7 @@ def main():
             T.Normalize(mean=MEAN, std=STD),
         ])),
         FilterBoxes(),
-        BuildLabels(ANCHORS, min_iou=config.anchors.min_iou, max_iou=config.anchors.max_iou),
+        BuildLabels(),
     ])
     eval_transform = T.Compose([
         Resize(config.resize_size),
@@ -331,36 +336,39 @@ def main():
             T.Normalize(mean=MEAN, std=STD),
         ])),
         FilterBoxes(),
-        BuildLabels(ANCHORS, min_iou=config.anchors.min_iou, max_iou=config.anchors.max_iou),
+        BuildLabels(),
     ])
 
-    train_dataset = Dataset(args.dataset_path, subset='train', transform=train_transform)
-    eval_dataset = Dataset(args.dataset_path, subset='eval', transform=eval_transform)
+    if config.dataset == 'coco':
+        Dataset = CocoDataset
+    else:
+        raise AssertionError('invalid config.dataset {}'.format(config.dataset))
+    train_dataset = Dataset(config.dataset_path, subset='eval', transform=train_transform)
+    eval_dataset = Dataset(config.dataset_path, subset='eval', transform=eval_transform)
     class_names = train_dataset.class_names
 
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=config.train_batch_size,
+        batch_size=config.train.batch_size,
         drop_last=True,
         shuffle=True,
-        num_workers=args.workers,
+        num_workers=config.workers,
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn)
-    if config.train_steps is not None:
-        train_data_loader = DataLoaderSlice(train_data_loader, config.train_steps)
+    # if config.train_steps is not None:
+    #     train_data_loader = DataLoaderSlice(train_data_loader, config.train_steps)
     eval_data_loader = torch.utils.data.DataLoader(
         eval_dataset,
-        batch_size=config.eval_batch_size,
+        batch_size=config.eval.batch_size,
         shuffle=True,
-        num_workers=args.workers,
+        num_workers=config.workers,
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn)
 
-    model = RetinaNet(
+    model = FCOS(
         config.model,
         num_classes=Dataset.num_classes,
-        anchors_per_level=len(ANCHOR_TYPES),
-        anchor_levels=[a is not None for a in ANCHORS])
+        levels=config.model.levels)
     model = model.to(DEVICE)
 
     optimizer = build_optimizer(model.parameters(), config)

@@ -1,12 +1,11 @@
 import itertools
 import math
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from detection.anchor_utils import flatten_detection_map
-from detection.model.backbone import EfficientNetB0, ResNet50
+# from detection.anchor_utils import flatten_detection_map
+from object_detection.model.backbone import ResNet50
 
 
 class ReLU(nn.ReLU):
@@ -94,7 +93,7 @@ class FlattenDetectionMap(nn.Module):
         return flatten_detection_map(input, self.num_anchors)
 
 
-class RetinaNet(nn.Module):
+class FCOS(nn.Module):
     def __init__(self, model, num_classes, anchors_per_level, anchor_levels, freeze_bn=False):
         super().__init__()
 
@@ -102,8 +101,6 @@ class RetinaNet(nn.Module):
 
         if model.backbone == 'resnet50':
             self.backbone = ResNet50()
-        elif model.backbone == 'effnetb0':
-            self.backbone = EfficientNetB0()
         else:
             raise AssertionError('invalid model.backbone'.format(model.backbone))
 
@@ -136,8 +133,11 @@ class RetinaNet(nn.Module):
         backbone_output = self.backbone(input)
         fpn_output = self.fpn(backbone_output)
 
-        class_output = torch.cat([self.flatten(self.class_head(x)) for x in fpn_output if x is not None], 1)
-        loc_output = torch.cat([self.flatten(self.loc_head(x)) for x in fpn_output if x is not None], 1)
+        class_output = [self.class_head(x) for x in fpn_output if x is not None]
+        loc_output = [self.loc_head(x) for x in fpn_output if x is not None]
+        print([x.shape for x in class_output])
+        print([x.shape for x in loc_output])
+        fail
 
         return class_output, loc_output
 

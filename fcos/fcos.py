@@ -1,9 +1,6 @@
 import torch
 
 from fcos.box_utils import boxes_tl_br, boxes_area
-import torch
-
-from fcos.box_utils import boxes_tl_br, boxes_area
 
 
 def build_yx_map(size, stride, device=None):
@@ -41,19 +38,12 @@ def map_boxes_to_image(dets, size, stride, bounds):
 
     contains = 0 < offsets_min
     limited = (bounds[0] <= offsets_max) & (offsets_max <= bounds[1])
-
     matches = contains & limited
-    # print(matches.sum(0).view(*size))
-
-    # ambig = matches.sum(0) > 1
-    # print(ambig.long().view(*size))
 
     areas = boxes_area(dets.boxes).unsqueeze(1).repeat(1, offsets.size(1))
     areas[~matches] = float('inf')
-    # print(matches.shape, areas.shape)
 
     indices = areas.argmin(0)
-    # print(offsets.shape, indices.shape)
 
     class_ids = dets.class_ids[indices] + 1
     class_ids[~matches.any(0)] = 0

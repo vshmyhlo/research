@@ -18,13 +18,13 @@ def test_map_boxes_to_image():
         ], dtype=torch.long),
         scores=None)
 
-    class_map, _ = map_boxes_to_image(dets, (4, 4), 32, (0, float('inf')))
+    class_map_a, _ = map_boxes_to_image(dets, (4, 4), 32, (0, float('inf')))
 
-    expected = torch.tensor([
+    class_map_e = torch.tensor([
         [3, 4, 0, 0],
         [0, 4, 5, 0],
         [0, 5, 5, 0],
         [0, 0, 0, 0],
-    ], dtype=class_map.dtype)
+    ], dtype=class_map_a.dtype)
 
-    assert (class_map == expected).all()
+    assert (class_map_a == class_map_e).all()
