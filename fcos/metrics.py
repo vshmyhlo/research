@@ -2,7 +2,7 @@ import time
 
 from all_the_tools.metrics import Mean, Metric
 
-from detection.map import per_class_precision_recall
+from fcos.map import per_class_precision_recall
 
 
 class FPS(Mean):

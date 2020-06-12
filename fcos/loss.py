@@ -4,22 +4,21 @@ from fcos.utils import foreground_binary_coding
 from losses import sigmoid_focal_loss
 
 
-def compute_loss(input, target):
-    input_class, input_loc = input
-    target_class, target_loc, strides = target
+def compute_loss(input, target, strides):
+    input_class, input_loc = [flatten_and_concat_maps(x) for x in input]
+    target_class, target_loc = [flatten_and_concat_maps(x) for x in target]
+    print([s.shape for s in strides])
+    fail
 
     # classification loss
     class_loss = compute_class_loss(input=input_class, target=target_class)
 
-    return class_loss
-
-    # print(class_loss.shape)
-    # fail
-
     # localization loss
     loc_mask = target_class > 0
-    loc_loss = compute_localization_loss(
-        input=input_loc[loc_mask], target=target_loc[loc_mask], anchors=anchors[loc_mask])
+    print(loc_mask.mean())
+    fail
+
+    loc_loss = compute_localization_loss(input=input_loc[loc_mask], target=target_loc[loc_mask])
 
     assert class_loss.size() == loc_loss.size()
     loss = class_loss + loc_loss
@@ -28,9 +27,6 @@ def compute_loss(input, target):
 
 
 def compute_class_loss(input, target):
-    input = flatten_and_concat_maps(input)
-    target = flatten_and_concat_maps(target)
-
     num_pos = (target > 0).sum().clamp(min=1.)
 
     target = foreground_binary_coding(target, input.size(1))

@@ -19,10 +19,10 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from fcos.loss import compute_loss
-from fcos.model import FCOS
 # from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
 # from detection.map import per_class_precision_recall_to_map
-# from detection.metrics import FPS, PerClassPR
+from fcos.metrics import FPS, PerClassPR
+from fcos.model import FCOS
 # from detection.model import RetinaNet
 from fcos.transforms import Resize, BuildLabels, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
 from fcos.utils import apply_recursively
@@ -144,12 +144,13 @@ def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch, co
 
     model.train()
     optimizer.zero_grad()
-    for i, (images, labels, dets_true) in enumerate(tqdm(data_loader, desc='epoch {} train'.format(epoch)), 1):
-        images, labels, dets_true = apply_recursively(lambda x: x.to(DEVICE), [images, labels, dets_true])
+    for i, batch in enumerate(tqdm(data_loader, desc='epoch {} train'.format(epoch)), 1):
+        images, labels, strides, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
 
         output = model(images)
 
-        loss = compute_loss(input=output, target=labels)
+        loss = compute_loss(input=output, target=labels, strides=strides)
+
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['learning_rate'].update(np.squeeze(scheduler.get_lr()))
 
@@ -218,12 +219,13 @@ def eval_epoch(model, data_loader, class_names, epoch, config):
 
     model.eval()
     with torch.no_grad():
-        for images, labels, anchors, dets_true in tqdm(data_loader, desc='epoch {} evaluation'.format(epoch)):
-            images, labels, anchors, dets_true = \
-                images.to(DEVICE), [m.to(DEVICE) for m in labels], anchors.to(DEVICE), [d.to(DEVICE) for d in dets_true]
+        for batch in tqdm(data_loader, desc='epoch {} evaluation'.format(epoch)):
+            images, labels, strides, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
+
             output = model(images)
 
-            loss = compute_loss(input=output, target=labels, anchors=anchors)
+            loss = compute_loss(input=output, target=labels, strides=strides)
+
             metrics['loss'].update(loss.data.cpu().numpy())
             metrics['fps'].update(images.size(0))
 
@@ -267,12 +269,13 @@ def eval_epoch(model, data_loader, class_names, epoch, config):
 
 
 def collate_fn(batch):
-    images, labels, dets = zip(*batch)
+    images, labels, strides, dets = zip(*batch)
 
     images = torch.utils.data.dataloader.default_collate(images)
     labels = torch.utils.data.dataloader.default_collate(labels)
+    strides = torch.utils.data.dataloader.default_collate(strides)
 
-    return images, labels, dets
+    return images, labels, strides, dets
 
 
 @click.command()

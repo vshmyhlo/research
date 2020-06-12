@@ -1,6 +1,6 @@
 import torch
 
-from fcos.box_utils import boxes_tl_br, boxes_area
+from object_detection.box_utils import boxes_tl_br, boxes_area
 
 
 def build_yx_map(size, stride, device=None):

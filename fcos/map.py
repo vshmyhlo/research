@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 
-from detection.box_utils import boxes_pairwise_iou
+from object_detection.box_utils import boxes_pairwise_iou
 
 
 # TODO: refactor

@@ -2,9 +2,9 @@ import numpy as np
 import torch
 from PIL import Image
 
-from fcos.box_utils import boxes_area, boxes_clip
 from fcos.fcos import assign_boxes_to_map
 from fcos.utils import Detections
+from object_detection.box_utils import boxes_area, boxes_clip
 
 
 class Resize(object):
@@ -87,9 +87,7 @@ class BuildLabels(object):
         loc_maps = tuple(loc_maps)
         strides = tuple(strides)
 
-        labels = (class_maps, loc_maps, strides)
-
-        return input['image'], labels, detections
+        return input['image'], (class_maps, loc_maps), strides, detections
 
 
 def resize(input, size, interpolation=Image.BILINEAR):
