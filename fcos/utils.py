@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import ImageFont, Image, ImageDraw
-from all_the_tools.torch.utils import one_hot
+
+from utils import one_hot
 
 
 # from detection.box_utils import boxes_clip
@@ -108,7 +109,10 @@ def draw_boxes(image, detections, class_names, line_width=2, shade=True):
 
 
 def foreground_binary_coding(input, num_classes):
-    return one_hot(input + 1, num_classes + 2)[:, 2:]
+    input = one_hot(input, num_classes + 1)[..., 1:]
+    input = input.transpose(-1, 1)
+
+    return input
 
 
 def pr_curve_plot(pr):
@@ -121,3 +125,16 @@ def pr_curve_plot(pr):
     plt.ylim(0, 1)
 
     return fig
+
+
+def apply_recursively(f, x):
+    if isinstance(x, Detections):
+        return f(x)
+    elif isinstance(x, list):
+        return list(apply_recursively(f, y) for y in x)
+    elif isinstance(x, tuple):
+        return tuple(apply_recursively(f, y) for y in x)
+    elif isinstance(x, dict):
+        return {k: apply_recursively(f, x[k]) for k in x}
+    else:
+        return f(x)

@@ -3,6 +3,7 @@ import torch
 from PIL import Image
 
 from fcos.box_utils import boxes_area, boxes_clip
+from fcos.fcos import assign_boxes_to_map
 from fcos.utils import Detections
 
 
@@ -57,24 +58,38 @@ class FilterBoxes(object):
 
 
 class BuildLabels(object):
-    # def __init__(self, anchors, min_iou, max_iou):
-    #     self.anchors = anchors
-    #     self.min_iou = min_iou
-    #     self.max_iou = max_iou
+    def __init__(self, levels):
+        self.levels = levels
 
     def __call__(self, input):
         detections = Detections(
             class_ids=input['class_ids'],
             boxes=input['boxes'],
             scores=None)
-        print(detections)
-        fail
 
-        # _, h, w = input['image'].size()
-        # anchors = arrange_anchors_on_grid(torch.tensor((h, w)), self.anchors)
-        # labels = encode_boxes(detections, anchors, min_iou=self.min_iou, max_iou=self.max_iou)
-        #
-        # return input['image'], labels, anchors, detections
+        _, h, w = input['image'].size()
+        map_size = torch.tensor((h, w))
+
+        class_maps = []
+        loc_maps = []
+        strides = []
+        for i, level in enumerate(self.levels):
+            if level is not None:
+                stride = 2**i
+                class_map, loc_map = assign_boxes_to_map(detections, map_size, stride, level)
+                class_maps.append(class_map)
+                loc_maps.append(loc_map)
+                strides.append(stride)
+
+            map_size = torch.ceil(map_size.float() / 2).long()
+
+        class_maps = tuple(class_maps)
+        loc_maps = tuple(loc_maps)
+        strides = tuple(strides)
+
+        labels = (class_maps, loc_maps, strides)
+
+        return input['image'], labels, detections
 
 
 def resize(input, size, interpolation=Image.BILINEAR):

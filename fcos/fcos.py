@@ -28,7 +28,13 @@ def boxes_pairwise_offsets(boxes, points):
     return offsets
 
 
-def map_boxes_to_image(dets, size, stride, bounds):
+def assign_boxes_to_map(dets, size, stride, bounds):
+    if dets.boxes.size(0) == 0:
+        class_map = torch.zeros(*size, dtype=torch.long)
+        loc_map = torch.zeros(*size, 4, dtype=torch.float)
+
+        return class_map, loc_map
+
     yx_map = build_yx_map(size, stride, device=dets.boxes.device)
     yx_map = yx_map.view(size[0] * size[1], 2)
 

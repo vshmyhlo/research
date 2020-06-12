@@ -35,7 +35,7 @@ def mix_up(images_0, labels_0, alpha):
 
     lam = torch.distributions.Beta(alpha, alpha).sample((b,)).to(images_0.device)
     lam = torch.max(lam, 1 - lam)
-   
+
     images = weighted_sum(images_0, images_1, lam.view(b, 1, 1, 1))
     labels = weighted_sum(labels_0, labels_1, lam)
 

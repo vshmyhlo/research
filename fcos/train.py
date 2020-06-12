@@ -5,6 +5,7 @@ import click
 import numpy as np
 import torch
 import torch.distributions
+import torch.nn.functional as F
 import torch.utils
 import torch.utils.data
 import torchvision
@@ -17,18 +18,21 @@ from all_the_tools.utils import seed_python
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from fcos.loss import compute_loss
 from fcos.model import FCOS
 # from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
 # from detection.map import per_class_precision_recall_to_map
 # from detection.metrics import FPS, PerClassPR
 # from detection.model import RetinaNet
 from fcos.transforms import Resize, BuildLabels, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
+from fcos.utils import apply_recursively
 # from detection.anchor_utils import compute_anchor
 # from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
 # from detection.box_utils import boxes_iou
 # from detection.config import build_default_config
 from object_detection.datasets.coco import Dataset as CocoDataset
 from utils import random_seed
+from utils import weighted_sum
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
 
@@ -89,57 +93,6 @@ def worker_init_fn(_):
     seed_python(torch.initial_seed() % 2**32)
 
 
-def compute_classification_loss(input, target):
-    if input.numel() == 0:
-        return torch.tensor(0.)
-
-    if config.loss.classification == 'focal':
-        loss = focal_loss(input=input, target=target)
-    else:
-        raise AssertionError('invalid config.loss.classification {}'.format(config.loss.classification))
-
-    return loss.mean()
-
-
-def compute_localization_loss(input, target, anchors):
-    if input.numel() == 0:
-        return torch.tensor(0.)
-
-    if config.loss.localization == 'smooth_l1':
-        target = boxes_to_shifts_scales(target, anchors)
-        loss = smooth_l1_loss(input=input, target=target)
-    elif config.loss.localization == 'iou':
-        input = shifts_scales_to_boxes(input, anchors)
-        loss = boxes_iou_loss(input=input, target=target)
-    else:
-        raise AssertionError('invalid config.loss.localization {}'.format(config.loss.localization))
-
-    return loss.mean()
-
-
-# TODO: check loss
-# TODO: incostistent interface in compute_loss and compute_metric
-# TODO: target_class, target_loc, target_boxes = target ?
-def compute_loss(input, target, anchors):
-    input_class, input_loc = input
-    target_class, target_loc = target
-
-    # classification loss
-    class_mask = target_class != -1
-    class_loss = compute_classification_loss(
-        input=input_class[class_mask], target=target_class[class_mask])
-
-    # localization loss
-    loc_mask = target_class > 0
-    loc_loss = compute_localization_loss(
-        input=input_loc[loc_mask], target=target_loc[loc_mask], anchors=anchors[loc_mask])
-
-    assert class_loss.size() == loc_loss.size()
-    loss = class_loss + loc_loss
-
-    return loss
-
-
 def compute_metric(input, target):
     input_class, input_loc = input
     target_class, target_loc = target
@@ -153,26 +106,27 @@ def compute_metric(input, target):
 
 
 def build_optimizer(parameters, config):
-    if config.opt.type == 'sgd':
+    if config.train.opt.type == 'sgd':
         return torch.optim.SGD(
             parameters,
-            config.opt.learning_rate,
-            momentum=config.opt.sgd.momentum,
-            weight_decay=config.opt.weight_decay,
+            config.train.opt.learning_rate,
+            momentum=config.train.opt.momentum,
+            weight_decay=config.train.opt.weight_decay,
             nesterov=True)
     else:
-        raise AssertionError('invalid config.opt.type {}'.format(config.opt.type))
+        raise AssertionError('invalid config.train.opt.type {}'.format(config.train.opt.type))
 
 
 def build_scheduler(optimizer, config, epoch_size, start_epoch):
+    print(start_epoch * epoch_size - 1)
     # FIXME:
-    if config.sched.type == 'cosine':
+    if config.train.sched.type == 'cosine':
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            config.epochs * epoch_size,
+            config.train.epochs * epoch_size,
             last_epoch=start_epoch * epoch_size - 1)
     else:
-        raise AssertionError('invalid config.sched.type {}'.format(config.sched.type))
+        raise AssertionError('invalid config.train.sched.type {}'.format(config.train.sched.type))
 
 
 def decode(output, anchors):
@@ -182,9 +136,7 @@ def decode(output, anchors):
     return output_class, output_loc
 
 
-def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch):
-    writer = SummaryWriter(os.path.join(args.experiment_path, 'train'))
-
+def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch, config):
     metrics = {
         'loss': Mean(),
         'learning_rate': Last(),
@@ -192,49 +144,70 @@ def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch):
 
     model.train()
     optimizer.zero_grad()
-    for i, (images, labels, anchors, dets_true) in enumerate(tqdm(data_loader, desc='epoch {} train'.format(epoch)), 1):
-        images, labels, anchors, dets_true = \
-            images.to(DEVICE), [m.to(DEVICE) for m in labels], anchors.to(DEVICE), [d.to(DEVICE) for d in dets_true]
+    for i, (images, labels, dets_true) in enumerate(tqdm(data_loader, desc='epoch {} train'.format(epoch)), 1):
+        images, labels, dets_true = apply_recursively(lambda x: x.to(DEVICE), [images, labels, dets_true])
+
         output = model(images)
 
-        loss = compute_loss(input=output, target=labels, anchors=anchors)
+        loss = compute_loss(input=output, target=labels)
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['learning_rate'].update(np.squeeze(scheduler.get_lr()))
 
-        output = decode(output, anchors)
-
-        (loss.mean() / config.opt.acc_steps).backward()
-
-        if i % config.opt.acc_steps == 0:
+        (loss.mean() / config.train.acc_steps).backward()
+        if i % config.train.acc_steps == 0:
             optimizer.step()
             optimizer.zero_grad()
-
         scheduler.step()
 
+        break
+
     with torch.no_grad():
-        metrics = {k: metrics[k].compute_and_reset() for k in metrics}
-        print('[EPOCH {}][TRAIN] {}'.format(epoch, ', '.join('{}: {:.8f}'.format(k, metrics[k]) for k in metrics)))
-        for k in metrics:
-            writer.add_scalar(k, metrics[k], global_step=epoch)
+        writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
+        images = denormalize(images, mean=MEAN, std=STD)
 
-        dets_pred = [
-            decode_boxes((c.sigmoid(), r))
-            for c, r in zip(*output)]
-        images_true = [
-            draw_boxes(denormalize(i, mean=MEAN, std=STD), fill_scores(d), class_names)
-            for i, d in zip(images, dets_true)]
-        images_pred = [
-            draw_boxes(denormalize(i, mean=MEAN, std=STD), d, class_names)
-            for i, d in zip(images, dets_pred)]
+        for i, (t, p) in enumerate(zip(labels[0], output[0])):
+            v, p = p.sigmoid().max(1)
+            p += 1
+            p[v < 0.5] = 0
 
-        writer.add_image(
-            'images_true', torchvision.utils.make_grid(images_true, nrow=4, normalize=True), global_step=epoch)
-        writer.add_image(
-            'images_pred', torchvision.utils.make_grid(images_pred, nrow=4, normalize=True), global_step=epoch)
+            t = draw_class_map(images, t, num_classes=len(class_names))
+            p = draw_class_map(images, p, num_classes=len(class_names))
+
+            writer.add_image(
+                'class_map/{}/true'.format(i),  # TODO: naming
+                torchvision.utils.make_grid(t, nrow=4),
+                global_step=epoch)
+            writer.add_image(
+                'class_map/{}/pred'.format(i),  # TODO: naming
+                torchvision.utils.make_grid(p, nrow=4),
+                global_step=epoch)
+
+        writer.flush()
+        writer.close()
+
+        # metrics = {k: metrics[k].compute_and_reset() for k in metrics}
+        # print('[EPOCH {}][TRAIN] {}'.format(epoch, ', '.join('{}: {:.8f}'.format(k, metrics[k]) for k in metrics)))
+        # for k in metrics:
+        #     writer.add_scalar(k, metrics[k], global_step=epoch)
+        #
+        # dets_pred = [
+        #     decode_boxes((c.sigmoid(), r))
+        #     for c, r in zip(*output)]
+        # images_true = [
+        #     draw_boxes(denormalize(i, mean=MEAN, std=STD), fill_scores(d), class_names)
+        #     for i, d in zip(images, dets_true)]
+        # images_pred = [
+        #     draw_boxes(denormalize(i, mean=MEAN, std=STD), d, class_names)
+        #     for i, d in zip(images, dets_pred)]
+
+        # writer.add_image(
+        #     'images_true', torchvision.utils.make_grid(images_true, nrow=4, normalize=True), global_step=epoch)
+        # writer.add_image(
+        #     'images_pred', torchvision.utils.make_grid(images_pred, nrow=4, normalize=True), global_step=epoch)
 
 
-def eval_epoch(model, data_loader, class_names, epoch):
-    writer = SummaryWriter(os.path.join(args.experiment_path, 'eval'))
+def eval_epoch(model, data_loader, class_names, epoch, config):
+    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
 
     metrics = {
         'loss': Mean(),
@@ -294,13 +267,12 @@ def eval_epoch(model, data_loader, class_names, epoch):
 
 
 def collate_fn(batch):
-    images, labels, anchors, dets = zip(*batch)
+    images, labels, dets = zip(*batch)
 
     images = torch.utils.data.dataloader.default_collate(images)
     labels = torch.utils.data.dataloader.default_collate(labels)
-    anchors = torch.utils.data.dataloader.default_collate(anchors)
 
-    return images, labels, anchors, dets
+    return images, labels, dets
 
 
 @click.command()
@@ -326,7 +298,7 @@ def main(config_path, **kwargs):
             T.Normalize(mean=MEAN, std=STD),
         ])),
         FilterBoxes(),
-        BuildLabels(),
+        BuildLabels(config.model.levels),
     ])
     eval_transform = T.Compose([
         Resize(config.resize_size),
@@ -336,7 +308,7 @@ def main(config_path, **kwargs):
             T.Normalize(mean=MEAN, std=STD),
         ])),
         FilterBoxes(),
-        BuildLabels(),
+        BuildLabels(config.model.levels),
     ])
 
     if config.dataset == 'coco':
@@ -375,30 +347,44 @@ def main(config_path, **kwargs):
 
     saver = Saver({'model': model, 'optimizer': optimizer})
     start_epoch = 0
-    if args.restore_path is not None:
-        saver.load(args.restore_path, keys=['model'])
-    if os.path.exists(os.path.join(args.experiment_path, 'checkpoint.pth')):
-        start_epoch = saver.load(os.path.join(args.experiment_path, 'checkpoint.pth'))
+    if config.restore_path is not None:
+        saver.load(config.restore_path, keys=['model'])
+    if os.path.exists(os.path.join(config.experiment_path, 'checkpoint.pth')):
+        start_epoch = saver.load(os.path.join(config.experiment_path, 'checkpoint.pth'))
 
     scheduler = build_scheduler(optimizer, config, len(train_data_loader), start_epoch)
 
-    for epoch in range(start_epoch, config.epochs):
+    for epoch in range(start_epoch, config.train.epochs):
         train_epoch(
             model=model,
             optimizer=optimizer,
             scheduler=scheduler,
             data_loader=train_data_loader,
             class_names=class_names,
-            epoch=epoch)
+            epoch=epoch,
+            config=config)
         gc.collect()
         eval_epoch(
             model=model,
             data_loader=eval_data_loader,
             class_names=class_names,
-            epoch=epoch)
+            epoch=epoch,
+            config=config)
         gc.collect()
 
-        saver.save(os.path.join(args.experiment_path, 'checkpoint.pth'), epoch=epoch + 1)
+        saver.save(os.path.join(config.experiment_path, 'checkpoint.pth'), epoch=epoch + 1)
+
+
+def draw_class_map(image, class_map, num_classes):
+    colors = np.random.RandomState(42).uniform(1 / 3, 1, size=(num_classes + 1, 3))
+    colors[0] = 0.
+    colors = torch.tensor(colors, dtype=torch.float, device=class_map.device)
+
+    class_map = colors[class_map]
+    class_map = class_map.permute(0, 3, 1, 2)
+    class_map = F.interpolate(class_map, size=image.size()[2:], mode='nearest')
+
+    return weighted_sum(image, class_map, 0.5)
 
 
 if __name__ == '__main__':

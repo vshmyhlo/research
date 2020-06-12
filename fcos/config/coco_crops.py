@@ -1,6 +1,7 @@
 from all_the_tools.config import Config as C
 
 batch_size = 8
+
 config = C(
     seed=42,
     resize_size=512,
@@ -19,6 +20,16 @@ config = C(
             (512, float('inf')),
         ]),
     train=C(
-        batch_size=batch_size),
+        epochs=50,
+        batch_size=batch_size,
+        acc_steps=2,
+        opt=C(
+            type='sgd',
+            learning_rate=0.01,
+            weight_decay=1e-4,
+            momentum=0.9),
+
+        sched=C(
+            type='cosine')),
     eval=C(
         batch_size=batch_size * 2))

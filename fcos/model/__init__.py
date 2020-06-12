@@ -94,7 +94,7 @@ class FlattenDetectionMap(nn.Module):
 
 
 class FCOS(nn.Module):
-    def __init__(self, model, num_classes, anchors_per_level, anchor_levels, freeze_bn=False):
+    def __init__(self, model, num_classes, levels, freeze_bn=False):
         super().__init__()
 
         self.freeze_bn = freeze_bn
@@ -104,10 +104,10 @@ class FCOS(nn.Module):
         else:
             raise AssertionError('invalid model.backbone'.format(model.backbone))
 
-        self.fpn = FPN(anchor_levels, self.backbone.featuremap_depths)
-        self.class_head = HeadSubnet(256, anchors_per_level * num_classes)
-        self.loc_head = HeadSubnet(256, anchors_per_level * 4)
-        self.flatten = FlattenDetectionMap(anchors_per_level)
+        self.fpn = FPN(levels, self.backbone.featuremap_depths)
+        self.class_head = HeadSubnet(256, num_classes)
+        self.loc_head = HeadSubnet(256, 4)
+        # self.flatten = FlattenDetectionMap(anchors_per_level)
 
         for m in self.backbone.modules():
             if isinstance(m, nn.BatchNorm2d):
@@ -133,13 +133,10 @@ class FCOS(nn.Module):
         backbone_output = self.backbone(input)
         fpn_output = self.fpn(backbone_output)
 
-        class_output = [self.class_head(x) for x in fpn_output if x is not None]
-        loc_output = [self.loc_head(x) for x in fpn_output if x is not None]
-        print([x.shape for x in class_output])
-        print([x.shape for x in loc_output])
-        fail
+        class_maps = [self.class_head(x) for x in fpn_output if x is not None]
+        loc_maps = [self.loc_head(x) for x in fpn_output if x is not None]
 
-        return class_output, loc_output
+        return class_maps, loc_maps
 
     def train(self, mode=True):
         super().train(mode)
