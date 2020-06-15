@@ -96,28 +96,3 @@ def per_class_nms(boxes, scores, class_ids, iou_threshold):
     keep, = torch.where(mask)
 
     return keep
-
-
-def boxes_pairwise_offsets(boxes, points):
-    boxes = boxes.unsqueeze(1)
-    points = points.unsqueeze(0)
-
-    tl, br = boxes_tl_br(boxes)
-
-    offsets = torch.cat([
-        points - tl,
-        br - points,
-    ], -1)
-
-    return offsets
-
-
-def boxes_offsets_to_tlbr(offsets, points):
-    tl, br = boxes_tl_br(offsets)
-
-    boxes = torch.cat([
-        points - tl,
-        points + br,
-    ], -1)
-
-    return boxes

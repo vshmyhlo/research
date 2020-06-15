@@ -18,14 +18,16 @@ from all_the_tools.utils import seed_python
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from fcos.fcos import BoxCoder
 from fcos.loss import compute_loss
 # from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
 # from detection.map import per_class_precision_recall_to_map
 from fcos.metrics import FPS, PerClassPR
 from fcos.model import FCOS
-# from detection.model import RetinaNet
-from fcos.transforms import Resize, BuildLabels, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
+from fcos.transforms import Resize, BuildTargets, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
 from fcos.utils import apply_recursively
+# from detection.model import RetinaNet
+from fcos.utils import draw_boxes
 # from detection.anchor_utils import compute_anchor
 # from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
 # from detection.box_utils import boxes_iou
@@ -35,6 +37,10 @@ from utils import random_seed
 from utils import weighted_sum
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
+
+
+# TODO: check encode-decode gives same result
+# TODO: check all transpose, permute and view
 
 # TODO: clip boxes in decoding?
 # TODO: maybe use 1-based class indexing (maybe better not)
@@ -129,14 +135,7 @@ def build_scheduler(optimizer, config, epoch_size, start_epoch):
         raise AssertionError('invalid config.train.sched.type {}'.format(config.train.sched.type))
 
 
-def decode(output, anchors):
-    output_class, output_loc = output
-    output_loc = shifts_scales_to_boxes(output_loc, anchors)
-
-    return output_class, output_loc
-
-
-def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch, config):
+def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names, epoch, config):
     metrics = {
         'loss': Mean(),
         'learning_rate': Last(),
@@ -145,11 +144,11 @@ def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch, co
     model.train()
     optimizer.zero_grad()
     for i, batch in enumerate(tqdm(data_loader, desc='epoch {} train'.format(epoch)), 1):
-        images, labels, strides, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
+        images, targets, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
 
         output = model(images)
 
-        loss = compute_loss(input=output, target=labels, strides=strides)
+        loss = compute_loss(input=output, target=targets)
 
         metrics['loss'].update(loss.data.cpu().numpy())
         metrics['learning_rate'].update(np.squeeze(scheduler.get_lr()))
@@ -160,51 +159,56 @@ def train_epoch(model, optimizer, scheduler, data_loader, class_names, epoch, co
             optimizer.zero_grad()
         scheduler.step()
 
-        break
-
     with torch.no_grad():
+        metrics = {k: metrics[k].compute_and_reset() for k in metrics}
         writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
+
+        for k in metrics:
+            writer.add_scalar(k, metrics[k], global_step=epoch)
+
         images = denormalize(images, mean=MEAN, std=STD)
+        for i, (true, pred) in enumerate(zip(targets[0], output[0])):
+            prob, pred = pred.sigmoid().max(1)
+            pred += 1
+            pred[prob < 0.5] = 0
 
-        for i, (t, p) in enumerate(zip(labels[0], output[0])):
-            v, p = p.sigmoid().max(1)
-            p += 1
-            p[v < 0.5] = 0
-
-            t = draw_class_map(images, t, num_classes=len(class_names))
-            p = draw_class_map(images, p, num_classes=len(class_names))
+            true = draw_class_map(images, true, num_classes=len(class_names))
+            pred = draw_class_map(images, pred, num_classes=len(class_names))
 
             writer.add_image(
                 'class_map/{}/true'.format(i),  # TODO: naming
-                torchvision.utils.make_grid(t, nrow=4),
+                torchvision.utils.make_grid(true, nrow=4),
                 global_step=epoch)
             writer.add_image(
                 'class_map/{}/pred'.format(i),  # TODO: naming
-                torchvision.utils.make_grid(p, nrow=4),
+                torchvision.utils.make_grid(pred, nrow=4),
                 global_step=epoch)
+
+        targets = [
+            box_coder.decode([x[i] for x in targets[0]], [x[i] for x in targets[1]], images.size()[2:])
+            for i in range(images.size(0))]
+        output = [
+            box_coder.decode([x[i] for x in output[0]], [x[i] for x in output[1]], images.size()[2:])
+            for i in range(images.size(0))]
+
+        true = [
+            draw_boxes(i, d, class_names)
+            for i, d in zip(images, targets)]
+        pred = [
+            draw_boxes(i, d, class_names)
+            for i, d in zip(images, output)]
+
+        writer.add_image(
+            'detections/true',
+            torchvision.utils.make_grid(true, nrow=4),
+            global_step=epoch)
+        writer.add_image(
+            'detections/pred',
+            torchvision.utils.make_grid(pred, nrow=4),
+            global_step=epoch)
 
         writer.flush()
         writer.close()
-
-        # metrics = {k: metrics[k].compute_and_reset() for k in metrics}
-        # print('[EPOCH {}][TRAIN] {}'.format(epoch, ', '.join('{}: {:.8f}'.format(k, metrics[k]) for k in metrics)))
-        # for k in metrics:
-        #     writer.add_scalar(k, metrics[k], global_step=epoch)
-        #
-        # dets_pred = [
-        #     decode_boxes((c.sigmoid(), r))
-        #     for c, r in zip(*output)]
-        # images_true = [
-        #     draw_boxes(denormalize(i, mean=MEAN, std=STD), fill_scores(d), class_names)
-        #     for i, d in zip(images, dets_true)]
-        # images_pred = [
-        #     draw_boxes(denormalize(i, mean=MEAN, std=STD), d, class_names)
-        #     for i, d in zip(images, dets_pred)]
-
-        # writer.add_image(
-        #     'images_true', torchvision.utils.make_grid(images_true, nrow=4, normalize=True), global_step=epoch)
-        # writer.add_image(
-        #     'images_pred', torchvision.utils.make_grid(images_pred, nrow=4, normalize=True), global_step=epoch)
 
 
 def eval_epoch(model, data_loader, class_names, epoch, config):
@@ -220,11 +224,11 @@ def eval_epoch(model, data_loader, class_names, epoch, config):
     model.eval()
     with torch.no_grad():
         for batch in tqdm(data_loader, desc='epoch {} evaluation'.format(epoch)):
-            images, labels, strides, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
+            images, targets, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
 
             output = model(images)
 
-            loss = compute_loss(input=output, target=labels, strides=strides)
+            loss = compute_loss(input=output, target=targets)
 
             metrics['loss'].update(loss.data.cpu().numpy())
             metrics['fps'].update(images.size(0))
@@ -236,7 +240,7 @@ def eval_epoch(model, data_loader, class_names, epoch, config):
                 for c, r in zip(*output)]
             metrics['pr'].update((dets_true, dets_pred))
 
-            metric = compute_metric(input=output, target=labels)
+            metric = compute_metric(input=output, target=targets)
             for k in metric:
                 metrics[k].update(metric[k].data.cpu().numpy())
 
@@ -269,13 +273,12 @@ def eval_epoch(model, data_loader, class_names, epoch, config):
 
 
 def collate_fn(batch):
-    images, labels, strides, dets = zip(*batch)
+    images, targets, dets = zip(*batch)
 
     images = torch.utils.data.dataloader.default_collate(images)
-    labels = torch.utils.data.dataloader.default_collate(labels)
-    strides = torch.utils.data.dataloader.default_collate(strides)
+    targets = torch.utils.data.dataloader.default_collate(targets)
 
-    return images, labels, strides, dets
+    return images, targets, dets
 
 
 @click.command()
@@ -291,6 +294,8 @@ def main(config_path, **kwargs):
     del kwargs
     random_seed(config.seed)
 
+    box_coder = BoxCoder(config.model.levels)
+
     train_transform = T.Compose([
         Resize(config.resize_size),
         RandomCrop(config.crop_size),
@@ -301,7 +306,7 @@ def main(config_path, **kwargs):
             T.Normalize(mean=MEAN, std=STD),
         ])),
         FilterBoxes(),
-        BuildLabels(config.model.levels),
+        BuildTargets(box_coder),
     ])
     eval_transform = T.Compose([
         Resize(config.resize_size),
@@ -311,7 +316,7 @@ def main(config_path, **kwargs):
             T.Normalize(mean=MEAN, std=STD),
         ])),
         FilterBoxes(),
-        BuildLabels(config.model.levels),
+        BuildTargets(box_coder),
     ])
 
     if config.dataset == 'coco':
@@ -363,16 +368,18 @@ def main(config_path, **kwargs):
             optimizer=optimizer,
             scheduler=scheduler,
             data_loader=train_data_loader,
+            box_coder=box_coder,
             class_names=class_names,
             epoch=epoch,
             config=config)
         gc.collect()
-        eval_epoch(
-            model=model,
-            data_loader=eval_data_loader,
-            class_names=class_names,
-            epoch=epoch,
-            config=config)
+        # eval_epoch(
+        #     model=model,
+        #     data_loader=eval_data_loader,
+        #     box_coder=box_coder,
+        #     class_names=class_names,
+        #     epoch=epoch,
+        #     config=config)
         gc.collect()
 
         saver.save(os.path.join(config.experiment_path, 'checkpoint.pth'), epoch=epoch + 1)

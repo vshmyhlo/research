@@ -2,8 +2,10 @@ import numpy as np
 import torch
 from PIL import Image
 
-from fcos.utils import Detections
-from object_detection.box_utils import boxes_area, boxes_clip
+from eff_det.anchor_utils import arrange_anchors_on_grid
+from eff_det.box_coding import encode_boxes
+from eff_det.box_utils import boxes_area, boxes_clip
+from eff_det.utils import Detections
 
 
 class Resize(object):
@@ -56,23 +58,23 @@ class FilterBoxes(object):
         return filter_boxes(input, self.min_size)
 
 
-class BuildTargets(object):
-    def __init__(self, box_coder):
-        self.box_coder = box_coder
+class BuildLabels(object):
+    def __init__(self, anchors, min_iou, max_iou):
+        self.anchors = anchors
+        self.min_iou = min_iou
+        self.max_iou = max_iou
 
     def __call__(self, input):
-        dets = Detections(
+        detections = Detections(
             class_ids=input['class_ids'],
             boxes=input['boxes'],
             scores=None)
 
         _, h, w = input['image'].size()
-        class_maps, loc_maps = self.box_coder.encode(dets, (h, w))
+        anchors = arrange_anchors_on_grid(torch.tensor((h, w)), self.anchors)
+        labels = encode_boxes(detections, anchors, min_iou=self.min_iou, max_iou=self.max_iou)
 
-        class_maps = tuple(class_maps)
-        loc_maps = tuple(loc_maps)
-
-        return input['image'], (class_maps, loc_maps), dets
+        return input['image'], labels, anchors, detections
 
 
 def resize(input, size, interpolation=Image.BILINEAR):

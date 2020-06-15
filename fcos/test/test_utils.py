@@ -1,10 +1,10 @@
 import torch
 
-from fcos.fcos import assign_boxes_to_map
+from fcos.fcos import boxes_to_map
 from fcos.utils import Detections
 
 
-def test_map_boxes_to_image():
+def test_assign_boxes_to_map():
     dets = Detections(
         boxes=torch.tensor([
             [0, 0, 32, 32],
@@ -18,7 +18,7 @@ def test_map_boxes_to_image():
         ], dtype=torch.long),
         scores=None)
 
-    class_map_a, _ = assign_boxes_to_map(dets, (4, 4), 32, (0, float('inf')))
+    class_map_a, _ = boxes_to_map(dets, (4, 4), 32, (0, float('inf')))
 
     class_map_e = torch.tensor([
         [3, 4, 0, 0],

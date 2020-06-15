@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import ImageFont, Image, ImageDraw
+from all_the_tools.torch.utils import one_hot
 
-from object_detection.box_utils import boxes_clip
-from utils import one_hot
+from eff_det.box_utils import boxes_clip
 
 
 class Detections(namedtuple('Detections', ['class_ids', 'boxes', 'scores'])):
@@ -52,13 +52,13 @@ def logit(input):
     return torch.log(input / (1 - input))
 
 
-def fill_scores(dets):
-    assert dets.scores is None
+def fill_scores(detections):
+    assert detections.scores is None
 
     return Detections(
-        class_ids=dets.class_ids,
-        boxes=dets.boxes,
-        scores=torch.ones_like(dets.class_ids, dtype=torch.float))
+        class_ids=detections.class_ids,
+        boxes=detections.boxes,
+        scores=torch.ones_like(detections.class_ids, dtype=torch.float))
 
 
 # TODO: fix boxes usage
@@ -107,7 +107,7 @@ def draw_boxes(image, detections, class_names, line_width=2, shade=True):
 
 
 def foreground_binary_coding(input, num_classes):
-    return one_hot(input + 1, num_classes + 2)[..., 2:]
+    return one_hot(input + 1, num_classes + 2)[:, 2:]
 
 
 def pr_curve_plot(pr):
@@ -120,16 +120,3 @@ def pr_curve_plot(pr):
     plt.ylim(0, 1)
 
     return fig
-
-
-def apply_recursively(f, x):
-    if isinstance(x, Detections):
-        return f(x)
-    elif isinstance(x, list):
-        return list(apply_recursively(f, y) for y in x)
-    elif isinstance(x, tuple):
-        return tuple(apply_recursively(f, y) for y in x)
-    elif isinstance(x, dict):
-        return {k: apply_recursively(f, x[k]) for k in x}
-    else:
-        return f(x)
