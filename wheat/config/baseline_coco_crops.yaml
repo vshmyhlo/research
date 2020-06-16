@@ -1,0 +1,47 @@
+dataset: coco
+epochs: 50
+train_batch_size: 8
+eval_batch_size: 16
+resize_size: 512
+crop_size: 512
+train_steps: 2000
+
+model:
+  backbone: resnet50
+
+anchors:
+  min_iou: 0.4
+  max_iou: 0.5
+  sizes:
+    -
+    -
+    -
+    - 32
+    - 64
+    - 128
+    - 256
+    - 512
+  ratios:
+    - 0.5
+    - 1
+    - 2
+  scales:
+    - 1
+    - 1.26
+    - 1.587
+
+loss:
+  classification: focal
+  localization: iou
+
+opt:
+  type: sgd
+  learning_rate: 0.01
+  weight_decay: 1e-4
+  acc_steps: 2
+
+  sgd:
+    momentum: 0.9
+
+sched:
+  type: cosine

@@ -1,31 +1,52 @@
-from abc import ABC, abstractmethod
-
 import torch
-from dataclasses import dataclass
 
-from ray_tracing.utils import Material, Ray, normalize
-
-
-@dataclass
-class Object(ABC):
-    material: Material
-
-    @abstractmethod
-    def ray_intersection(self, ray: Ray):
-        raise NotImplementedError
-
-    @abstractmethod
-    def normal(self, position):
-        raise NotImplementedError
+from ray_tracing.material import Metal
+from ray_tracing.ray import Ray
+from ray_tracing.vector import normalize
 
 
-@dataclass
+class Object(object):
+    def __init__(self, material: Metal):
+        self.material = material
+
+
+class Intersection(object):
+    def __init__(self, object, t):
+        self.object = object
+        self.t = t
+
+
+class ObjectList(object):
+    def __init__(self, objects):
+        self.objects = objects
+
+    def intersects(self, ray: Ray):
+        intersection = None
+
+        for object in self.objects:
+            t = object.intersects(ray)
+            if t is None:
+                continue
+            if t < 0.001:
+                continue
+
+            if intersection is None:
+                intersection = Intersection(object, t)
+            elif t < intersection.t:
+                intersection = Intersection(object, t)
+
+        return intersection
+
+
 class Sphere(Object):
-    center: torch.Tensor
-    radius: float
+    def __init__(self, center, radius, material: Metal):
+        super().__init__(material=material)
 
-    def ray_intersection(self, ray: Ray):
-        sr = ray.orig - self.center
+        self.center = center
+        self.radius = radius
+
+    def intersects(self, ray: Ray):
+        sr = ray.origin - self.center
 
         a = torch.dot(ray.direction, ray.direction)
         b = 2 * torch.dot(ray.direction, sr)

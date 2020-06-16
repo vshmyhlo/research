@@ -6,9 +6,11 @@ from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 
 from ray_tracing.light import Light
+from ray_tracing.material import Metal
 from ray_tracing.objects import Sphere, Object
+from ray_tracing.ray import Ray
 from ray_tracing.scene import Scene
-from ray_tracing.utils import vector, Ray, Material, normalize
+from ray_tracing.vector import vector, normalize
 
 
 def build_view(size):
@@ -31,8 +33,8 @@ def main():
 
     camera = vector(0, 0, -1)
     objects = [
-        Sphere(center=vector(0, 0, 0), radius=0.5, material=Material(vector(1, 0, 0))),
-        Sphere(center=vector(0, -1, 1), radius=0.5, material=Material(vector(0, 1, 0))),
+        Sphere(vector(0, 0, 0), 0.5, Metal(vector(1, 0, 0))),
+        Sphere(vector(0, -1, 1), 0.5, Metal(vector(0, 1, 0))),
     ]
     lights = [
         Light(vector(1.5, -0.5, -10), vector(1, 1, 1)),
@@ -46,7 +48,7 @@ def main():
     image = torch.zeros(3, *size, dtype=torch.float)
 
     for i, j in tqdm(product(range(size[0]), range(size[1])), total=size[0] * size[1]):
-        ray = Ray(camera, normalize(view[:, i, j] - camera))
+        ray = Ray(camera, view[:, i, j] - camera)
         image[:, i, j] = ray_trace(ray, scene)
 
     image = to_pil_image(image)
@@ -60,7 +62,7 @@ def ray_trace(ray: Ray, scene: Scene):
 
     ot = None
     for object in scene.objects:
-        t = object.ray_intersection(ray)
+        t = object.intersects(ray)
         if t is None:
             continue
         if ot is None:
@@ -74,7 +76,7 @@ def ray_trace(ray: Ray, scene: Scene):
     object, t = ot
     del ot
 
-    position = ray.position(t)
+    position = ray.position_at(t)
     normal = object.normal(position)
     color += color_at(object, position, normal, scene)
 
@@ -89,7 +91,7 @@ def color_at(object: Object, position, normal, scene: Scene):
     specular_k = 50
 
     for light in scene.lights:
-        to_light = Ray(position, normalize(light.position - position))
+        to_light = Ray(position, light.position - position)
         color += object.material.color * \
                  object.material.diffuse * \
                  max(torch.dot(normal, to_light.direction), 0)
