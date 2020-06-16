@@ -5,7 +5,6 @@ from multiprocessing import Pool
 
 import click
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
@@ -20,19 +19,18 @@ from ray_tracing.vector import vector, normalize
 
 
 def randomize_objects():
-    rng = np.random.RandomState(4)
     floor = Sphere(vector(0, -102, 1), 100, Diffuse(vector(1 / 3, 1 / 3, 1 / 3)))
     objects = [floor]
 
     for _ in range(8):
         floor_to_center = vector(0, -2, 1) - floor.center
-        floor_to_center[0] += rng.uniform(-4, 4)
-        floor_to_center[2] += rng.uniform(0, 8)
+        floor_to_center[0] += random.uniform(-4, 4)
+        floor_to_center[2] += random.uniform(0, 8)
 
-        radius = rng.uniform(0.25, 1.5)
+        radius = random.uniform(0.25, 1.5)
         center = floor.center + normalize(floor_to_center) * floor.radius + radius
 
-        mat = rng.choice([Diffuse, Metal])
+        mat = random.choice([Diffuse, Metal])
 
         object = Sphere(center, radius, mat(vector(0, 0, 0).uniform_(0, 1)))
         objects.append(object)
@@ -46,6 +44,8 @@ def randomize_objects():
 @click.option('--steps', type=click.INT, required=True)
 @click.option('--output-path', type=click.Path(), default='./ray_tracing/output')
 def main(size, k, steps, output_path):
+    # utils.random_seed(2**7)
+    utils.random_seed(2**10)
     size = size, size
 
     camera = Camera(vector(0, 0, -1))

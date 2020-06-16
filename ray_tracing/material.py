@@ -23,24 +23,25 @@ class Metal(object):
         return Reflection(reflected, self.color)
 
 
-class DiffuseSphere(object):
-    def __init__(self, color):
+class Diffuse(object):
+    def __init__(self, color, mode='hemi'):
         self.color = color
+        self.mode = mode
 
     def reflect(self, ray, t, normal):
+        if self.mode == 'sphere':
+            return self.reflect_sphere(ray, t, normal)
+        elif self.mode == 'hemi':
+            return self.reflect_hemi(ray, t, normal)
+        else:
+            raise ValueError('invalid mode {}'.format(self.mode))
+       
+    def reflect_sphere(self, ray, t, normal):
         ray = Ray(ray.position_at(t), normal + random_unit())
 
         return Reflection(ray, self.color)
 
-
-class DiffuseHemisphere(object):
-    def __init__(self, color):
-        self.color = color
-
-    def reflect(self, ray, t, normal):
+    def reflect_hemi(self, ray, t, normal):
         ray = Ray(ray.position_at(t), random_in_hemisphere(normal))
 
         return Reflection(ray, self.color)
-
-
-Diffuse = DiffuseHemisphere
