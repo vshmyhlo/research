@@ -1,15 +1,17 @@
 from ray_tracing.ray import Ray
 
-from ray_tracing.vector import random_unit, reflect, random_in_hemisphere
+from ray_tracing.vector import random_unit, reflect, random_in_hemisphere, vector
 
 
-class Reflection(object):
-    def __init__(self, ray, attenuation):
-        self.ray = ray
-        self.attenuation = attenuation
+class Material(object):
+    def reflect(self, ray, t, normal):
+        raise NotImplementedError
+
+    def emit(self):
+        raise NotImplementedError
 
 
-class Metal(object):
+class Metal(Material):
     def __init__(self, color):
         self.color = color
 
@@ -22,8 +24,11 @@ class Metal(object):
 
         return Reflection(reflected, self.color)
 
+    def emit(self):
+        return vector(0, 0, 0)
 
-class Diffuse(object):
+
+class Diffuse(Material):
     def __init__(self, color, mode='hemi'):
         self.color = color
         self.mode = mode
@@ -35,7 +40,7 @@ class Diffuse(object):
             return self.reflect_hemi(ray, t, normal)
         else:
             raise ValueError('invalid mode {}'.format(self.mode))
-       
+
     def reflect_sphere(self, ray, t, normal):
         ray = Ray(ray.position_at(t), normal + random_unit())
 
@@ -45,3 +50,23 @@ class Diffuse(object):
         ray = Ray(ray.position_at(t), random_in_hemisphere(normal))
 
         return Reflection(ray, self.color)
+
+    def emit(self):
+        return vector(0, 0, 0)
+
+
+class Light(Material):
+    def __init__(self, color):
+        self.color = color
+
+    def reflect(self, ray, t, normal):
+        return None
+
+    def emit(self):
+        return self.color
+
+
+class Reflection(object):
+    def __init__(self, ray, attenuation):
+        self.ray = ray
+        self.attenuation = attenuation

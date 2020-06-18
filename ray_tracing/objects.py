@@ -1,12 +1,12 @@
 import torch
 
-from ray_tracing.material import Metal
+from ray_tracing.material import Metal, Material
 from ray_tracing.ray import Ray
 from ray_tracing.vector import normalize
 
 
 class Object(object):
-    def __init__(self, material: Metal):
+    def __init__(self, material: Material):
         self.material = material
 
 

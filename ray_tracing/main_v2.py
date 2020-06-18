@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 import utils
 from ray_tracing.camera import Camera
-from ray_tracing.material import Metal, Diffuse
+from ray_tracing.material import Metal, Diffuse, Light
 from ray_tracing.objects import Sphere, Object, ObjectList
 from ray_tracing.ray import Ray
 from ray_tracing.scene import Scene
@@ -34,6 +34,8 @@ def randomize_objects():
 
         object = Sphere(center, radius, mat(vector(0, 0, 0).uniform_(0, 1)))
         objects.append(object)
+
+    objects[8].material = Light(vector(1, 1, 1))
 
     return objects
 
@@ -86,18 +88,22 @@ def render_row(i, size, camera: Camera, objects: ObjectList, k, max_steps):
 
 
 def ray_trace(ray: Ray, objects: ObjectList, max_steps):
+    if max_steps == 0:
+        return vector(0, 0, 0)
+
     intersection = objects.intersects(ray)
     if intersection is None:
-        return vector(1, 1, 1)
+        return vector(0.2, 0.2, 0.2)
 
     position = ray.position_at(intersection.t)
     normal = intersection.object.normal(position)
 
+    emitted = intersection.object.material.emit()
     reflection = intersection.object.material.reflect(ray, intersection.t, normal)
-    if reflection and max_steps != 0:
-        return reflection.attenuation * ray_trace(reflection.ray, objects, max_steps - 1)
+    if reflection is None:
+        return emitted
 
-    return vector(0, 0, 0)
+    return emitted + reflection.attenuation * ray_trace(reflection.ray, objects, max_steps - 1)
 
 
 def color_at(object: Object, position, normal, scene: Scene):
