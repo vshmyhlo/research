@@ -1,8 +1,7 @@
 import torch
-import torch.nn.functional as F
 
 from fcos.utils import foreground_binary_coding
-from losses import sigmoid_focal_loss
+from losses import sigmoid_focal_loss, offsets_iou_loss
 
 
 def compute_loss(input, target):
@@ -39,7 +38,7 @@ def compute_localization_loss(input, target):
     if input.numel() == 0:
         return torch.tensor(0.)
 
-    loss = F.smooth_l1_loss(input=input, target=target, reduction='none')
+    loss = offsets_iou_loss(input=input, target=target)
     loss = loss.mean()
 
     return loss

@@ -1,4 +1,7 @@
+import torch
 from torch.nn import functional as F
+
+from object_detection.box_utils import boxes_tl_br
 
 
 def sigmoid_cross_entropy(input, target):
@@ -33,5 +36,24 @@ def lsep_loss(input, target):
     neg_examples = input[target <= 0.5].unsqueeze(0)
 
     loss = F.softplus(neg_examples - pos_examples)
+
+    return loss
+
+
+def offsets_iou_loss(input, target, eps=1e-7):
+    input_tl, input_br = boxes_tl_br(input)
+    target_tl, target_br = boxes_tl_br(target)
+
+    input_a = (input_tl + input_br).prod(-1)
+    target_a = (target_tl + target_br).prod(-1)
+
+    intersection = torch.min(input_tl, target_tl) + \
+                   torch.min(input_br, target_br)
+    intersection = intersection.prod(-1)
+
+    union = input_a + target_a - intersection
+
+    iou = intersection / (union + eps)
+    loss = 1 - iou
 
     return loss
