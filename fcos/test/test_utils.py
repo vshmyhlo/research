@@ -1,6 +1,6 @@
 import torch
 
-from fcos.fcos import boxes_to_map
+from fcos.box_coder import boxes_to_map
 from fcos.utils import Detections
 
 

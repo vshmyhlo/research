@@ -8,7 +8,9 @@ from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_
 class BoxCoder(object):
     def __init__(self, levels):
         self.levels = levels
-
+        self.conf_threshold = 0.05
+        self.iou_threshold = 0.5
+       
     def encode(self, dets, size):
         size = torch.tensor(size, dtype=torch.long)
 
@@ -61,14 +63,14 @@ class BoxCoder(object):
         loc_maps = offsets_to_boxes(loc_maps, yx_maps)
 
         scores, class_ids = class_maps.max(1)
-        fg = scores > 0.05
+        fg = scores > self.conf_threshold
 
         boxes = loc_maps
         boxes = boxes[fg]
         class_ids = class_ids[fg]
         scores = scores[fg]
 
-        keep = per_class_nms(boxes, scores, class_ids, 0.5)
+        keep = per_class_nms(boxes, scores, class_ids, self.iou_threshold)
         boxes = boxes[keep]
         class_ids = class_ids[keep]
         scores = scores[keep]
