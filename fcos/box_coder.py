@@ -2,7 +2,7 @@ import torch
 
 from fcos.utils import Detections, flatten_detection_map
 from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_boxes, per_class_nms, pairwise, \
-    boxes_contain_points
+    boxes_contain_points, tl_br_to_centers, boxes_to_tl_br, tl_br_to_boxes
 
 
 class BoxCoder(object):
@@ -10,7 +10,7 @@ class BoxCoder(object):
         self.levels = levels
         self.conf_threshold = 0.05
         self.iou_threshold = 0.5
-       
+
     def encode(self, dets, size):
         size = torch.tensor(size, dtype=torch.long)
 
@@ -81,8 +81,18 @@ class BoxCoder(object):
             scores=scores)
 
 
-def compute_sub_boxes(boxes, stride):
-    return boxes
+def compute_sub_boxes(boxes, stride, r=1.5):
+    tl, br = boxes_to_tl_br(boxes)
+    centers = tl_br_to_centers(tl, br)
+
+    sub_tl = centers - stride * r
+    sub_br = centers + stride * r
+
+    sub_boxes = tl_br_to_boxes(
+        torch.max(tl, sub_tl),
+        torch.min(br, sub_br))
+
+    return sub_boxes
 
 
 def offsets_bounded(offsets, bounds):

@@ -2,17 +2,25 @@ import torch
 import torchvision
 
 
-def boxes_tl_br(boxes):
+def boxes_to_tl_br(boxes):
     return torch.split(boxes, 2, -1)
 
 
-def boxes_center(boxes):
-    tl, br = boxes_tl_br(boxes)
+def tl_br_to_boxes(tl, br):
+    return torch.cat([tl, br], -1)
+
+
+def boxes_to_centers(boxes):
+    tl, br = boxes_to_tl_br(boxes)
+    return tl_br_to_centers(tl, br)
+
+
+def tl_br_to_centers(tl, br):
     return (tl + br) / 2
 
 
 def boxes_size(boxes):
-    tl, br = boxes_tl_br(boxes)
+    tl, br = boxes_to_tl_br(boxes)
     return br - tl
 
 
@@ -37,8 +45,8 @@ def boxes_area(boxes):
 
 # TODO: test
 def boxes_intersection(a, b):
-    a_tl, a_br = boxes_tl_br(a)
-    b_tl, b_br = boxes_tl_br(b)
+    a_tl, a_br = boxes_to_tl_br(a)
+    b_tl, b_br = boxes_to_tl_br(b)
 
     inner_tl = torch.max(a_tl, b_tl)
     inner_br = torch.min(a_br, b_br)
@@ -59,8 +67,8 @@ def boxes_iou(a, b):
 
 # TODO: test
 def boxes_outer(a, b):
-    a_tl, a_br = boxes_tl_br(a)
-    b_tl, b_br = boxes_tl_br(b)
+    a_tl, a_br = boxes_to_tl_br(a)
+    b_tl, b_br = boxes_to_tl_br(b)
 
     outer_tl = torch.min(a_tl, b_tl)
     outer_br = torch.max(a_br, b_br)
@@ -99,7 +107,7 @@ def per_class_nms(boxes, scores, class_ids, iou_threshold):
 
 
 def boxes_to_offsets(boxes, points):
-    tl, br = boxes_tl_br(boxes)
+    tl, br = boxes_to_tl_br(boxes)
 
     offsets = torch.cat([
         points - tl,
@@ -110,7 +118,7 @@ def boxes_to_offsets(boxes, points):
 
 
 def offsets_to_boxes(offsets, points):
-    tl, br = boxes_tl_br(offsets)
+    tl, br = boxes_to_tl_br(offsets)
 
     boxes = torch.cat([
         points - tl,
@@ -125,7 +133,7 @@ def pairwise(a, b):
 
 
 def boxes_contain_points(boxes, points):
-    tl, br = boxes_tl_br(boxes)
+    tl, br = boxes_to_tl_br(boxes)
     mask = (tl < points) & (points < br)
     mask = mask.all(-1)
 
