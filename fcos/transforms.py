@@ -69,9 +69,6 @@ class BuildTargets(object):
         _, h, w = input['image'].size()
         class_maps, loc_maps = self.box_coder.encode(dets, (h, w))
 
-        class_maps = tuple(class_maps)
-        loc_maps = tuple(loc_maps)
-
         return input['image'], (class_maps, loc_maps), dets
 
 

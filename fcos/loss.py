@@ -5,13 +5,13 @@ from fcos.utils import foreground_binary_coding
 from losses import sigmoid_focal_loss
 
 
-# TODO: add ignored positions
 def compute_loss(input, target):
-    input_class, input_loc = [flatten_and_concat_maps(x) for x in input]
-    target_class, target_loc = [flatten_and_concat_maps(x) for x in target]
+    input_class, input_loc = input
+    target_class, target_loc = target
 
     # classification loss
-    class_loss = compute_class_loss(input=input_class, target=target_class)
+    class_mask = target_class != -1
+    class_loss = compute_classification_loss(input=input_class[class_mask], target=target_class[class_mask])
 
     # localization loss
     loc_mask = target_class > 0
@@ -23,10 +23,12 @@ def compute_loss(input, target):
     return loss
 
 
-def compute_class_loss(input, target):
-    num_pos = (target > 0).sum().clamp(min=1.)
+def compute_classification_loss(input, target):
+    if input.numel() == 0:
+        return torch.tensor(0.)
 
-    target = foreground_binary_coding(target, input.size(2))
+    num_pos = (target > 0).sum().clamp(min=1.)
+    target = foreground_binary_coding(target, input.size(1))
     loss = sigmoid_focal_loss(input=input, target=target)
     loss = loss.sum() / num_pos
 
@@ -41,18 +43,3 @@ def compute_localization_loss(input, target):
     loss = loss.mean()
 
     return loss
-
-
-def flatten_and_concat_maps(maps):
-    def flatten(map):
-        b, *c, h, w = map.size()
-        map = map.view(b, *c, h * w)
-        if map.dim() == 3:
-            map = map.transpose(-1, -2)
-
-        return map
-
-    maps = [flatten(map) for map in maps]
-    maps = torch.cat(maps, 1)
-
-    return maps

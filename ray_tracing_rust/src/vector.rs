@@ -3,10 +3,9 @@ extern crate num;
 use std::ops::{Add, AddAssign, Div, Mul, Sub};
 
 use image::Primitive;
-use num::{Float, Zero};
+use num::{Float, NumCast, Zero};
 
-use crate::traits::{CastU8, Round};
-
+#[derive(Copy, Clone)]
 pub struct Vector3<T> {
     x: T,
     y: T,
@@ -32,13 +31,6 @@ impl<T> Vector3<T> where T: Float {
             z: self.z.round(),
         }
     }
-    pub fn cast_u8(self) -> Vector3<u8> {
-        Vector3 {
-            x: self.x as u8,
-            y: self.y as u8,
-            z: self.z as u8,
-        }
-    }
 
     pub fn normalize(self) -> Self {
         self / self.norm()
@@ -53,6 +45,15 @@ impl<T> Vector3<T> where T: Float {
     }
 }
 
+impl<T> Vector3<T> where T: Float, u8: NumCast {
+    pub fn cast_u8(self) -> Vector3<u8> {
+        Vector3 {
+            x: NumCast::from(self.x).unwrap(),
+            y: NumCast::from(self.y).unwrap(),
+            z: NumCast::from(self.z).unwrap(),
+        }
+    }
+}
 
 impl<T> Add for Vector3<T> where T: Add<Output=T> {
     type Output = Self;
@@ -79,7 +80,7 @@ impl<T> Sub<Self> for Vector3<T> where T: Sub<T, Output=T> {
     }
 }
 
-impl<T> Sub<T> for Vector3<T> where T: Sub<T, Output=T> {
+impl<T> Sub<T> for Vector3<T> where T: Sub<T, Output=T> + Copy {
     type Output = Self;
 
     fn sub(self, other: T) -> Self::Output {
@@ -91,7 +92,19 @@ impl<T> Sub<T> for Vector3<T> where T: Sub<T, Output=T> {
     }
 }
 
-impl<T> Mul<T> for Vector3<T> where T: Mul<T, Output=T> {
+impl<T> Mul<Self> for Vector3<T> where T: Mul<T, Output=T> + Copy {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self::Output {
+        Self {
+            x: self.x * other.x,
+            y: self.y * other.y,
+            z: self.z * other.z,
+        }
+    }
+}
+
+impl<T> Mul<T> for Vector3<T> where T: Mul<T, Output=T> + Copy {
     type Output = Self;
 
     fn mul(self, other: T) -> Self::Output {
@@ -103,7 +116,7 @@ impl<T> Mul<T> for Vector3<T> where T: Mul<T, Output=T> {
     }
 }
 
-impl<T> Div<T> for Vector3<T> where T: Div<T, Output=T> {
+impl<T> Div<T> for Vector3<T> where T: Div<T, Output=T> + Copy {
     type Output = Self;
 
     fn div(self, other: T) -> Self::Output {

@@ -1,9 +1,8 @@
 import torch
 
-from fcos.utils import Detections
-from fcos.utils import foreground_binary_coding
-from object_detection.box_utils import boxes_area, boxes_pairwise_offsets, boxes_offsets_to_tlbr
-from object_detection.box_utils import per_class_nms
+from fcos.utils import Detections, flatten_detection_map
+from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_boxes, per_class_nms, pairwise, \
+    boxes_contain_points
 
 
 class BoxCoder(object):
@@ -13,55 +12,58 @@ class BoxCoder(object):
     def encode(self, dets, size):
         size = torch.tensor(size, dtype=torch.long)
 
+        strides = []
         class_maps = []
         loc_maps = []
         for i, level in enumerate(self.levels):
             if level is not None:
                 stride = 2**i
+                strides.append(torch.empty(size.prod(), device=dets.boxes.device).fill_(stride))
 
-                class_map, loc_map = boxes_to_map(dets, size, stride, level)
-                loc_map = loc_map / stride
+                yx_map = build_yx_map(size, stride, device=dets.boxes.device)
+                yx_map = flatten_detection_map(yx_map)
+                class_map, loc_map = boxes_to_map(dets, yx_map, stride, level)
 
                 class_maps.append(class_map)
                 loc_maps.append(loc_map)
 
             size = torch.ceil(size.float() / 2).long()
 
+        strides = torch.cat(strides, 0)
+        class_maps = torch.cat(class_maps, 0)
+        loc_maps = torch.cat(loc_maps, 0)
+
+        loc_maps /= strides.unsqueeze(1)
+
         return class_maps, loc_maps
 
     def decode(self, class_maps, loc_maps, size):
         size = torch.tensor(size, dtype=torch.long)
 
-        class_maps = iter(class_maps)
-        loc_maps = iter(loc_maps)
-
-        boxes = []
-        scores = []
+        strides = []
+        yx_maps = []
         for i, level in enumerate(self.levels):
             if level is not None:
                 stride = 2**i
+                strides.append(torch.empty(size.prod(), device=class_maps.device).fill_(stride))
 
-                class_map = next(class_maps)
-                loc_map = next(loc_maps)
+                yx_map = build_yx_map(size, stride, device=class_maps.device)
+                yx_map = flatten_detection_map(yx_map)
 
-                if class_map.dim() == 2:
-                    class_map = foreground_binary_coding(class_map, 80).permute(2, 0, 1)
-                else:
-                    class_map = class_map.sigmoid()
-                loc_map = loc_map * stride
-                b, s = map_to_boxes(class_map, loc_map, size, stride)
-
-                boxes.append(b)
-                scores.append(s)
+                yx_maps.append(yx_map)
 
             size = torch.ceil(size.float() / 2).long()
 
-        boxes = torch.cat(boxes, 0)
-        scores = torch.cat(scores, 0)
+        strides = torch.cat(strides, 0)
+        yx_maps = torch.cat(yx_maps, 0)
 
-        scores, class_ids = scores.max(1)
-        fg = scores > 0.5
+        loc_maps *= strides.unsqueeze(1)
+        loc_maps = offsets_to_boxes(loc_maps, yx_maps)
 
+        scores, class_ids = class_maps.max(1)
+        fg = scores > 0.05
+
+        boxes = loc_maps
         boxes = boxes[fg]
         class_ids = class_ids[fg]
         scores = scores[fg]
@@ -77,23 +79,30 @@ class BoxCoder(object):
             scores=scores)
 
 
-def boxes_to_map(dets, size, stride, bounds):
+def compute_sub_boxes(boxes, stride):
+    return boxes
+
+
+def offsets_bounded(offsets, bounds):
+    max = offsets.max(-1).values
+    mask = (bounds[0] < max) & (max < bounds[1])
+
+    return mask
+
+
+def boxes_to_map(dets, yx_map, stride, bounds):
     if dets.boxes.size(0) == 0:
-        class_map = torch.zeros(*size, dtype=torch.long)
-        loc_map = torch.zeros(4, *size, dtype=torch.float)
+        class_map = torch.zeros(yx_map.size(0), dtype=torch.long)
+        loc_map = torch.zeros(yx_map.size(0), 4, dtype=torch.float)
 
         return class_map, loc_map
 
-    yx_map = build_yx_map(size, stride, device=dets.boxes.device)
-    yx_map = yx_map.view(2, size[0] * size[1]).transpose(0, 1)
+    offsets = boxes_to_offsets(*pairwise(dets.boxes, yx_map))
+    sub_boxes = compute_sub_boxes(dets.boxes, stride)
+    inside = boxes_contain_points(*pairwise(sub_boxes, yx_map))
 
-    offsets = boxes_pairwise_offsets(dets.boxes, yx_map)
-    offsets_min = offsets.min(-1).values
-    offsets_max = offsets.max(-1).values
-
-    contains = 0 < offsets_min
-    limited = (bounds[0] <= offsets_max) & (offsets_max <= bounds[1])
-    matches = contains & limited
+    bounded = offsets_bounded(offsets, bounds)
+    matches = inside & bounded
 
     areas = boxes_area(dets.boxes).unsqueeze(1).repeat(1, offsets.size(1))
     areas[~matches] = float('inf')
@@ -104,22 +113,10 @@ def boxes_to_map(dets, size, stride, bounds):
     class_ids[~matches.any(0)] = 0
     offsets = offsets[indices, range(indices.size(0))]
 
-    class_map = class_ids.view(*size)
-    loc_map = offsets.transpose(0, 1).view(4, *size)
+    class_map = class_ids
+    loc_map = offsets
 
     return class_map, loc_map
-
-
-def map_to_boxes(class_map, loc_map, size, stride):
-    scores = class_map.view(80, size[0] * size[1]).transpose(0, 1)
-    offsets = loc_map.view(4, size[0] * size[1]).transpose(0, 1)
-
-    yx_map = build_yx_map(size, stride, device=class_map.device)
-    yx_map = yx_map.view(2, size[0] * size[1]).transpose(0, 1)
-
-    boxes = boxes_offsets_to_tlbr(offsets, yx_map)
-
-    return boxes, scores
 
 
 def build_yx_map(size, stride, device=None):

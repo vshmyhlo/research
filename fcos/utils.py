@@ -133,3 +133,12 @@ def apply_recursively(f, x):
         return {k: apply_recursively(f, x[k]) for k in x}
     else:
         return f(x)
+
+
+def flatten_detection_map(input):
+    *rest, c, h, w = input.size()
+    assert 0 <= len(rest) <= 1
+    input = input.view(*rest, c, h * w)
+    input = input.transpose(-1, -2)
+
+    return input
