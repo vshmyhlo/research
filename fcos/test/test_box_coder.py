@@ -1,10 +1,10 @@
 import torch
 
-from fcos.box_coder import boxes_to_map
-from fcos.utils import Detections
+from fcos.box_coder import boxes_to_map, build_yx_map
+from fcos.utils import Detections, flatten_detection_map
 
 
-def test_assign_boxes_to_map():
+def test_boxes_to_map():
     dets = Detections(
         boxes=torch.tensor([
             [0, 0, 32, 32],
@@ -18,13 +18,15 @@ def test_assign_boxes_to_map():
         ], dtype=torch.long),
         scores=None)
 
-    class_map_a, _ = boxes_to_map(dets, (4, 4), 32, (0, float('inf')))
+    yx_map = build_yx_map((4, 4), 32, device=dets.boxes.device)
+    yx_map = flatten_detection_map(yx_map)
+    class_map_a, _ = boxes_to_map(dets, yx_map, 32, (0, float('inf')))
 
     class_map_e = torch.tensor([
         [3, 4, 0, 0],
         [0, 4, 5, 0],
         [0, 5, 5, 0],
         [0, 0, 0, 0],
-    ], dtype=class_map_a.dtype)
+    ], dtype=class_map_a.dtype).view(-1)
 
-    assert (class_map_a == class_map_e).all()
+    assert torch.allclose(class_map_a, class_map_e)
