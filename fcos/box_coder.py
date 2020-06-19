@@ -8,7 +8,7 @@ from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_
 class BoxCoder(object):
     def __init__(self, levels):
         self.levels = levels
-        self.conf_threshold = 0.05
+        self.conf_threshold = 0.3
         self.iou_threshold = 0.5
 
     def encode(self, dets, size):
