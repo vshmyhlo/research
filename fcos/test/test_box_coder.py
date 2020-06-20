@@ -1,6 +1,6 @@
 import torch
 
-from fcos.box_coder import boxes_to_map, build_yx_map
+from fcos.box_coder import boxes_to_map, build_yx_map, compute_sub_boxes
 from fcos.utils import Detections, flatten_detection_map
 
 
@@ -30,3 +30,16 @@ def test_boxes_to_map():
     ], dtype=class_map_a.dtype).view(-1)
 
     assert torch.allclose(class_map_a, class_map_e)
+
+
+def test_compute_sub_boxes():
+    boxes = torch.tensor([
+        [0, 0, 100, 20],
+    ], dtype=torch.float)
+   
+    actual = compute_sub_boxes(boxes, 32)
+    expected = torch.tensor([
+        [2, 0, 98, 20],
+    ], dtype=torch.float)
+
+    assert torch.allclose(actual, expected)

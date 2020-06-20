@@ -18,16 +18,18 @@ from all_the_tools.utils import seed_python
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from fcos.fcos import BoxCoder
+from fcos.box_coder import BoxCoder
 from fcos.loss import compute_loss
 # from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
 # from detection.map import per_class_precision_recall_to_map
 from fcos.metrics import FPS, PerClassPR
 from fcos.model import FCOS
 from fcos.transforms import Resize, BuildTargets, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
+from fcos.utils import DataLoaderSlice
 from fcos.utils import apply_recursively
 # from detection.model import RetinaNet
 from fcos.utils import draw_boxes
+from fcos.utils import foreground_binary_coding
 # from detection.anchor_utils import compute_anchor
 # from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
 # from detection.box_utils import boxes_iou
@@ -40,7 +42,6 @@ from utils import weighted_sum
 
 
 # TODO: check encode-decode gives same result
-# TODO: check all transpose, permute and view
 
 # TODO: clip boxes in decoding?
 # TODO: maybe use 1-based class indexing (maybe better not)
@@ -124,7 +125,6 @@ def build_optimizer(parameters, config):
 
 
 def build_scheduler(optimizer, config, epoch_size, start_epoch):
-    print(start_epoch * epoch_size - 1)
     # FIXME:
     if config.train.sched.type == 'cosine':
         return torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -167,36 +167,16 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
             writer.add_scalar(k, metrics[k], global_step=epoch)
 
         images = denormalize(images, mean=MEAN, std=STD)
-        for i, (true, pred) in enumerate(zip(targets[0], output[0])):
-            prob, pred = pred.sigmoid().max(1)
-            pred += 1
-            pred[prob < 0.5] = 0
 
-            true = draw_class_map(images, true, num_classes=len(class_names))
-            pred = draw_class_map(images, pred, num_classes=len(class_names))
+        dets_true = [
+            box_coder.decode(foreground_binary_coding(c, 80), r, images.size()[2:])
+            for c, r in zip(*targets)]
+        dets_pred = [
+            box_coder.decode(c.sigmoid(), r, images.size()[2:])
+            for c, r in zip(*output)]
 
-            writer.add_image(
-                'class_map/{}/true'.format(i),  # TODO: naming
-                torchvision.utils.make_grid(true, nrow=4),
-                global_step=epoch)
-            writer.add_image(
-                'class_map/{}/pred'.format(i),  # TODO: naming
-                torchvision.utils.make_grid(pred, nrow=4),
-                global_step=epoch)
-
-        targets = [
-            box_coder.decode([x[i] for x in targets[0]], [x[i] for x in targets[1]], images.size()[2:])
-            for i in range(images.size(0))]
-        output = [
-            box_coder.decode([x[i] for x in output[0]], [x[i] for x in output[1]], images.size()[2:])
-            for i in range(images.size(0))]
-
-        true = [
-            draw_boxes(i, d, class_names)
-            for i, d in zip(images, targets)]
-        pred = [
-            draw_boxes(i, d, class_names)
-            for i, d in zip(images, output)]
+        true = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_true)]
+        pred = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_pred)]
 
         writer.add_image(
             'detections/true',
@@ -335,8 +315,8 @@ def main(config_path, **kwargs):
         num_workers=config.workers,
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn)
-    # if config.train_steps is not None:
-    #     train_data_loader = DataLoaderSlice(train_data_loader, config.train_steps)
+    if config.train_steps is not None:
+        train_data_loader = DataLoaderSlice(train_data_loader, config.train_steps)
     eval_data_loader = torch.utils.data.DataLoader(
         eval_dataset,
         batch_size=config.eval.batch_size,

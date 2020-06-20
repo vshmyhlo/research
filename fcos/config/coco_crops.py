@@ -4,6 +4,7 @@ batch_size = 8
 
 config = C(
     seed=42,
+    train_steps=2000,
     resize_size=512,
     crop_size=512,
     dataset='coco',
