@@ -10,6 +10,28 @@ from matplotlib import pyplot as plt
 COLORS = ('#1f77b4', '#ff7f0e', '#3ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf')
 
 
+class DataLoaderSlice(object):
+    def __init__(self, data_loader, size):
+        self.data_loader = data_loader
+        self.size = size
+        self.iter = None
+
+    def __len__(self):
+        return self.size
+
+    def __iter__(self):
+        i = 0
+        while i < self.size:
+            if self.iter is None:
+                self.iter = iter(self.data_loader)
+
+            try:
+                yield next(self.iter)
+                i += 1
+            except StopIteration:
+                self.iter = None
+
+
 class Zip(object):
     def __init__(self, *iterables):
         self.iterables = iterables

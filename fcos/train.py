@@ -25,7 +25,6 @@ from fcos.loss import compute_loss
 from fcos.metrics import FPS, PerClassPR
 from fcos.model import FCOS
 from fcos.transforms import Resize, BuildTargets, RandomCrop, RandomFlipLeftRight, denormalize, FilterBoxes
-from fcos.utils import DataLoaderSlice
 from fcos.utils import apply_recursively
 # from detection.model import RetinaNet
 from fcos.utils import draw_boxes
@@ -35,7 +34,7 @@ from fcos.utils import foreground_binary_coding
 # from detection.box_utils import boxes_iou
 # from detection.config import build_default_config
 from object_detection.datasets.coco import Dataset as CocoDataset
-from utils import random_seed
+from utils import random_seed, DataLoaderSlice
 from utils import weighted_sum
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores

@@ -26,28 +26,6 @@ class Detections(namedtuple('Detections', ['class_ids', 'boxes', 'scores'])):
             scores=apply(self.scores))
 
 
-class DataLoaderSlice(object):
-    def __init__(self, data_loader, size):
-        self.data_loader = data_loader
-        self.size = size
-        self.iter = None
-
-    def __len__(self):
-        return self.size
-
-    def __iter__(self):
-        i = 0
-        while i < self.size:
-            if self.iter is None:
-                self.iter = iter(self.data_loader)
-
-            try:
-                yield next(self.iter)
-                i += 1
-            except StopIteration:
-                self.iter = None
-
-
 def logit(input):
     return torch.log(input / (1 - input))
 

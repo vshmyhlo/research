@@ -5,69 +5,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from fcos.model.fpn import FPN
+from fcos.model.modules import ReLU, ConvNorm
 from fcos.utils import flatten_detection_map
 from object_detection.model.backbone import ResNet50
-
-
-class ReLU(nn.ReLU):
-    pass
-
-
-class Norm(nn.GroupNorm):
-    def __init__(self, num_features):
-        super().__init__(num_channels=num_features, num_groups=32)
-
-
-class ConvNorm(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
-        super().__init__(
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=kernel_size // 2),
-            Norm(out_channels))
-
-
-class UpsampleMerge(nn.Module):
-    def __init__(self, c_channels):
-        super().__init__()
-
-        self.projection = ConvNorm(c_channels, 256, 1)
-        self.output = ConvNorm(256, 256, 3)
-
-    def forward(self, p, c):
-        # TODO: assert sizes
-
-        p = F.interpolate(p, size=(c.size(2), c.size(3)), mode='nearest')
-        c = self.projection(c)
-        input = p + c
-        input = self.output(input)
-
-        return input
-
-
-# TODO: optimize level calculation
-class FPN(nn.Module):
-    def __init__(self, anchor_levels, featuremap_depths):
-        super().__init__()
-
-        self.c5_to_p6 = ConvNorm(featuremap_depths[5], 256, 3, stride=2)
-        self.p6_to_p7 = nn.Sequential(
-            ReLU(inplace=True),
-            ConvNorm(256, 256, 3, stride=2)) if anchor_levels[7] else None
-        self.c5_to_p5 = ConvNorm(featuremap_depths[5], 256, 1)
-        self.p5c4_to_p4 = UpsampleMerge(featuremap_depths[4])
-        self.p4c3_to_p3 = UpsampleMerge(featuremap_depths[3])
-        self.p3c2_to_p2 = UpsampleMerge(featuremap_depths[2]) if anchor_levels[2] else None
-
-    def forward(self, input):
-        p6 = self.c5_to_p6(input[5])
-        p7 = self.p6_to_p7(p6) if self.p6_to_p7 is not None else None
-        p5 = self.c5_to_p5(input[5])
-        p4 = self.p5c4_to_p4(p5, input[4])
-        p3 = self.p4c3_to_p3(p4, input[3])
-        p2 = self.p3c2_to_p2(p3, input[2]) if self.p3c2_to_p2 is not None else None
-
-        input = [None, None, p2, p3, p4, p5, p6, p7]
-
-        return input
 
 
 class HeadSubnet(nn.Sequential):
@@ -95,14 +36,14 @@ class FCOS(nn.Module):
         else:
             raise AssertionError('invalid model.backbone'.format(model.backbone))
 
-        self.fpn = FPN(levels, self.backbone.featuremap_depths)
+        self.fpn = FPN(self.backbone.featuremap_depths)
         self.class_head = HeadSubnet(256, num_classes)
         self.loc_head = HeadSubnet(256, 4)
 
-        for m in self.backbone.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                for p in m.parameters():
-                    p.requires_grad = False
+        # for m in self.backbone.modules():
+        #     if isinstance(m, nn.BatchNorm2d):
+        #         for p in m.parameters():
+        #             p.requires_grad = False
 
         modules = itertools.chain(
             self.fpn.modules(),
@@ -129,12 +70,12 @@ class FCOS(nn.Module):
 
         return class_output, loc_output
 
-    def train(self, mode=True):
-        super().train(mode)
-
-        if not self.freeze_bn:
-            return
-
-        for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.eval()
+    # def train(self, mode=True):
+    #     super().train(mode)
+    #
+    #     if not self.freeze_bn:
+    #         return
+    #
+    #     for m in self.modules():
+    #         if isinstance(m, nn.BatchNorm2d):
+    #             m.eval()

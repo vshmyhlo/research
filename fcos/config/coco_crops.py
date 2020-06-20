@@ -1,10 +1,10 @@
 from all_the_tools.config import Config as C
 
-batch_size = 8
+batch_size = 16
 
 config = C(
     seed=42,
-    train_steps=2000,
+    train_steps=1000,
     resize_size=512,
     crop_size=512,
     dataset='coco',
@@ -23,7 +23,7 @@ config = C(
     train=C(
         epochs=100,
         batch_size=batch_size,
-        acc_steps=2,
+        acc_steps=1,
         opt=C(
             type='sgd',
             learning_rate=0.01,
