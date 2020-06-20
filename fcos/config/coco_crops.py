@@ -21,7 +21,7 @@ config = C(
             (512, float('inf')),
         ]),
     train=C(
-        epochs=50,
+        epochs=100,
         batch_size=batch_size,
         acc_steps=2,
         opt=C(

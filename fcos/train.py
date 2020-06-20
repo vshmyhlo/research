@@ -303,7 +303,7 @@ def main(config_path, **kwargs):
         Dataset = CocoDataset
     else:
         raise AssertionError('invalid config.dataset {}'.format(config.dataset))
-    train_dataset = Dataset(config.dataset_path, subset='eval', transform=train_transform)
+    train_dataset = Dataset(config.dataset_path, subset='train', transform=train_transform)
     eval_dataset = Dataset(config.dataset_path, subset='eval', transform=eval_transform)
     class_names = train_dataset.class_names
 
