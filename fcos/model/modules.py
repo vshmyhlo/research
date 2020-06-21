@@ -10,8 +10,17 @@ class Norm(nn.GroupNorm):
         super().__init__(num_channels=num_features, num_groups=32)
 
 
+class Conv(nn.Conv2d):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, init='linear'):
+        super().__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+
+        nn.init.kaiming_normal_(self.weight, nonlinearity=init)
+        if bias:
+            nn.init.zeros_(self.bias)
+
+
 class ConvNorm(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, init='linear'):
         super().__init__(
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=kernel_size // 2),
+            Conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=False, init=init),
             Norm(out_channels))

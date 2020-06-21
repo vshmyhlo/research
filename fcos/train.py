@@ -169,10 +169,10 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
 
         dets_true = [
             box_coder.decode(foreground_binary_coding(c, 80), r, images.size()[2:])
-            for c, r in zip(*targets)]
+            for c, r, s in zip(*targets)]
         dets_pred = [
             box_coder.decode(c.sigmoid(), r, images.size()[2:])
-            for c, r in zip(*output)]
+            for c, r, s in zip(*output)]
 
         true = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_true)]
         pred = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_pred)]
@@ -324,10 +324,7 @@ def main(config_path, **kwargs):
         collate_fn=collate_fn,
         worker_init_fn=worker_init_fn)
 
-    model = FCOS(
-        config.model,
-        num_classes=Dataset.num_classes,
-        levels=config.model.levels)
+    model = FCOS(config.model, num_classes=Dataset.num_classes)
     model = model.to(DEVICE)
 
     optimizer = build_optimizer(model.parameters(), config)

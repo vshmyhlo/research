@@ -67,9 +67,9 @@ class BuildTargets(object):
             scores=None)
 
         _, h, w = input['image'].size()
-        class_maps, loc_maps = self.box_coder.encode(dets, (h, w))
+        class_maps, loc_maps, cent_maps = self.box_coder.encode(dets, (h, w))
 
-        return input['image'], (class_maps, loc_maps), dets
+        return input['image'], (class_maps, loc_maps, cent_maps), dets
 
 
 def resize(input, size, interpolation=Image.BILINEAR):

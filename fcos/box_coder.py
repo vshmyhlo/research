@@ -36,8 +36,9 @@ class BoxCoder(object):
         loc_maps = torch.cat(loc_maps, 0)
 
         loc_maps /= strides.unsqueeze(1)
+        cent_maps = compute_centerness(loc_maps)
 
-        return class_maps, loc_maps
+        return class_maps, loc_maps, cent_maps
 
     def decode(self, class_maps, loc_maps, size):
         size = torch.tensor(size, dtype=torch.long)
@@ -79,6 +80,16 @@ class BoxCoder(object):
             class_ids=class_ids,
             boxes=boxes,
             scores=scores)
+
+
+def compute_centerness(offsets):
+    tl, br = boxes_to_tl_br(offsets)
+    min = torch.min(tl, br)
+    max = torch.max(tl, br)
+
+    centerness = (min / max).prod(-1).sqrt()
+
+    return centerness
 
 
 def compute_sub_boxes(boxes, stride, r=1.5):
