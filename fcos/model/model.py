@@ -49,5 +49,6 @@ class FCOS(nn.Module):
 
         loc_output, cent_output = loc_output.split([4, 1], -1)
         loc_output = F.relu(loc_output)
+        cent_output = cent_output.squeeze(-1)
 
         return class_output, loc_output, cent_output
