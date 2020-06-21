@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fcos.model.fpn import FPN
-from fcos.model.modules import ReLU, ConvNorm, Conv
+from fcos.model.modules import ReLU, ConvNorm, Conv, Scale
 from fcos.utils import flatten_detection_map
 from object_detection.model.backbone import ResNet50
 
@@ -36,6 +36,7 @@ class FCOS(nn.Module):
         self.fpn = FPN(self.backbone.featuremap_depths)
         self.class_head = HeadSubnet(256, num_classes)
         self.loc_head = HeadSubnet(256, 5)
+        self.scales = nn.ModuleList([Scale() for _ in range(5)])
 
         pi = 0.01
         nn.init.constant_(self.class_head[-1].bias, -math.log((1 - pi) / pi))
@@ -44,11 +45,27 @@ class FCOS(nn.Module):
         backbone_output = self.backbone(input)
         fpn_output = self.fpn(backbone_output)
 
-        class_output = torch.cat([flatten_detection_map(self.class_head(x)) for x in fpn_output if x is not None], 1)
-        loc_output = torch.cat([flatten_detection_map(self.loc_head(x)) for x in fpn_output if x is not None], 1)
+        fpn_output = [x for x in fpn_output if x is not None]
+        assert len(fpn_output) == len(self.scales)
 
-        loc_output, cent_output = loc_output.split([4, 1], -1)
-        loc_output = F.relu(loc_output)
-        cent_output = cent_output.squeeze(-1)
+        class_output = []
+        loc_output = []
+        cent_output = []
+        for o, scale in zip(fpn_output, self.scales):
+            class_o = flatten_detection_map(self.class_head(o))
+            loc_o = flatten_detection_map(self.loc_head(o))
+            del o
+
+            loc_o, cent_o = loc_o.split([4, 1], -1)
+            loc_o = F.relu(scale(loc_o))
+            cent_o = cent_o.squeeze(-1)
+
+            class_output.append(class_o)
+            loc_output.append(loc_o)
+            cent_output.append(cent_o)
+
+        class_output = torch.cat(class_output, 1)
+        loc_output = torch.cat(loc_output, 1)
+        cent_output = torch.cat(cent_output, 1)
 
         return class_output, loc_output, cent_output

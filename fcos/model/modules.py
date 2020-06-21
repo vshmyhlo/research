@@ -1,3 +1,4 @@
+import torch
 from torch import nn as nn
 
 
@@ -24,3 +25,15 @@ class ConvNorm(nn.Sequential):
         super().__init__(
             Conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=False, init=init),
             Norm(out_channels))
+
+
+class Scale(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.scale = nn.Parameter(torch.empty((), dtype=torch.float))
+
+        nn.init.constant_(self.scale, 1.)
+
+    def forward(self, input):
+        return input * self.scale
