@@ -1,5 +1,3 @@
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,21 +5,22 @@ import torch.nn.functional as F
 from fcos.model.fpn import FPN
 from fcos.model.modules import ReLU, ConvNorm, Conv, Scale
 from fcos.utils import flatten_detection_map
+from init import Normal, prior_
 from object_detection.model.backbone import ResNet50
 
 
 class HeadSubnet(nn.Sequential):
     def __init__(self, in_channels, out_channels):
         super().__init__(
-            ConvNorm(in_channels, in_channels, 3, padding=1, init='relu'),
+            ConvNorm(in_channels, in_channels, 3, padding=1, init=Normal(0, 0.01)),
             ReLU(inplace=True),
-            ConvNorm(in_channels, in_channels, 3, padding=1, init='relu'),
+            ConvNorm(in_channels, in_channels, 3, padding=1, init=Normal(0, 0.01)),
             ReLU(inplace=True),
-            ConvNorm(in_channels, in_channels, 3, padding=1, init='relu'),
+            ConvNorm(in_channels, in_channels, 3, padding=1, init=Normal(0, 0.01)),
             ReLU(inplace=True),
-            ConvNorm(in_channels, in_channels, 3, padding=1, init='relu'),
+            ConvNorm(in_channels, in_channels, 3, padding=1, init=Normal(0, 0.01)),
             ReLU(inplace=True),
-            Conv(in_channels, out_channels, 3, padding=1))
+            Conv(in_channels, out_channels, 3, padding=1, init=Normal(0, 0.01)))
 
 
 class FCOS(nn.Module):
@@ -38,8 +37,7 @@ class FCOS(nn.Module):
         self.loc_head = HeadSubnet(256, 5)
         self.scales = nn.ModuleList([Scale() for _ in range(5)])
 
-        pi = 0.01
-        nn.init.constant_(self.class_head[-1].bias, -math.log((1 - pi) / pi))
+        prior_(self.class_head[-1].bias, 0.01)
 
     def forward(self, input):
         backbone_output = self.backbone(input)

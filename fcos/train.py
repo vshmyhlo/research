@@ -128,7 +128,13 @@ def build_scheduler(optimizer, config, epoch_size, start_epoch):
     if config.train.sched.type == 'cosine':
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            config.train.epochs * epoch_size,
+            T_max=config.train.epochs * epoch_size,
+            last_epoch=start_epoch * epoch_size - 1)
+    elif config.train.sched.type == 'step':
+        return torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=[e * epoch_size for e in config.train.sched.steps],
+            gamma=0.1,
             last_epoch=start_epoch * epoch_size - 1)
     else:
         raise AssertionError('invalid config.train.sched.type {}'.format(config.train.sched.type))
@@ -319,6 +325,7 @@ def main(config_path, **kwargs):
     eval_data_loader = torch.utils.data.DataLoader(
         eval_dataset,
         batch_size=config.eval.batch_size,
+        drop_last=False,
         shuffle=True,
         num_workers=config.workers,
         collate_fn=collate_fn,

@@ -18,7 +18,7 @@ def test_boxes_to_map():
         ], dtype=torch.long),
         scores=None)
 
-    yx_map = build_yx_map((4, 4), 32, device=dets.boxes.device)
+    yx_map = build_yx_map((4, 4), 32)
     yx_map = flatten_detection_map(yx_map)
     class_map_a, _ = boxes_to_map(dets, yx_map, 32, (0, float('inf')))
 
@@ -32,14 +32,29 @@ def test_boxes_to_map():
     assert torch.allclose(class_map_a, class_map_e)
 
 
+def test_build_yx_map():
+    actual = build_yx_map((2, 2), 32)
+    expected = torch.tensor([
+        [
+            [16, 16],
+            [48, 48],
+        ], [
+            [16, 48],
+            [16, 48],
+        ]
+    ], dtype=torch.float)
+
+    assert torch.allclose(actual, expected)
+
+
 def test_compute_sub_boxes():
     boxes = torch.tensor([
         [0, 0, 100, 20],
     ], dtype=torch.float)
-   
-    actual = compute_sub_boxes(boxes, 32)
+
+    actual = compute_sub_boxes(boxes, 20)
     expected = torch.tensor([
-        [2, 0, 98, 20],
+        [20, 0, 80, 20],
     ], dtype=torch.float)
 
     assert torch.allclose(actual, expected)

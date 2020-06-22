@@ -1,3 +1,4 @@
+from init import KaimingUniform
 from torch import nn as nn
 from torch.nn import functional as F
 
@@ -8,12 +9,12 @@ class FPN(nn.Module):
     def __init__(self, featuremap_depths):
         super().__init__()
 
-        self.c5_to_p5 = ConvNorm(featuremap_depths[5], 256, 1)
+        self.c5_to_p5 = ConvNorm(featuremap_depths[5], 256, 1, init=KaimingUniform())
 
-        self.p5_to_p6 = ConvNorm(256, 256, 3, stride=2, padding=1)
+        self.p5_to_p6 = ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform())
         self.p6_to_p7 = nn.Sequential(
             ReLU(inplace=True),
-            ConvNorm(256, 256, 3, stride=2, padding=1))
+            ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform()))
 
         self.p5c4_to_p4 = UpsampleMerge(featuremap_depths[4])
         self.p4c3_to_p3 = UpsampleMerge(featuremap_depths[3])
@@ -36,8 +37,8 @@ class UpsampleMerge(nn.Module):
     def __init__(self, c_channels):
         super().__init__()
 
-        self.projection = ConvNorm(c_channels, 256, 1)
-        self.output = ConvNorm(256, 256, 3, padding=1)
+        self.projection = ConvNorm(c_channels, 256, 1, init=KaimingUniform())
+        self.output = ConvNorm(256, 256, 3, padding=1, init=KaimingUniform())
 
     def forward(self, p, c):
         # TODO: assert sizes

@@ -21,7 +21,7 @@ config = C(
             (512, float('inf')),
         ]),
     train=C(
-        epochs=100,
+        epochs=90,
         batch_size=batch_size,
         acc_steps=1,
         opt=C(
@@ -31,6 +31,7 @@ config = C(
             momentum=0.9),
 
         sched=C(
-            type='cosine')),
+            type='step',
+            steps=[60, 80])),
     eval=C(
         batch_size=batch_size * 2))

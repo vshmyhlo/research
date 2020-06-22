@@ -12,16 +12,17 @@ class Norm(nn.GroupNorm):
 
 
 class Conv(nn.Conv2d):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, init='linear'):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, init=None):
         super().__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
 
-        nn.init.kaiming_normal_(self.weight, nonlinearity=init)
+        if init is not None:
+            init.init_(self.weight)
         if bias:
-            nn.init.zeros_(self.bias)
+            nn.init.constant_(self.bias, 0.)
 
 
 class ConvNorm(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, init='linear'):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, init=None):
         super().__init__(
             Conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=False, init=init),
             Norm(out_channels))
