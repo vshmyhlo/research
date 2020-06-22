@@ -3,7 +3,8 @@ from torch import nn as nn
 
 
 class ReLU(nn.ReLU):
-    pass
+    def __init__(self):
+        super().__init__(inplace=True)
 
 
 class Norm(nn.GroupNorm):

@@ -1,8 +1,8 @@
-from init import KaimingUniform
 from torch import nn as nn
 from torch.nn import functional as F
 
 from fcos.model.modules import ConvNorm, ReLU
+from init import KaimingUniform
 
 
 class FPN(nn.Module):
@@ -13,7 +13,7 @@ class FPN(nn.Module):
 
         self.p5_to_p6 = ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform())
         self.p6_to_p7 = nn.Sequential(
-            ReLU(inplace=True),
+            ReLU(),
             ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform()))
 
         self.p5c4_to_p4 = UpsampleMerge(featuremap_depths[4])
@@ -41,7 +41,8 @@ class UpsampleMerge(nn.Module):
         self.output = ConvNorm(256, 256, 3, padding=1, init=KaimingUniform())
 
     def forward(self, p, c):
-        # TODO: assert sizes
+        assert c.size(2) == p.size(2) * 2
+        assert c.size(3) == p.size(3) * 2
 
         p = F.interpolate(p, size=(c.size(2), c.size(3)), mode='nearest')
         c = self.projection(c)

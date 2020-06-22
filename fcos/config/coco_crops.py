@@ -1,7 +1,8 @@
 from all_the_tools.config import Config as C
 
-batch_size = 16
-image_size = 512
+batch_size = 8
+acc_steps = 2
+image_size = 640
 
 config = C(
     seed=42,
@@ -24,7 +25,7 @@ config = C(
     train=C(
         epochs=90,
         batch_size=batch_size,
-        acc_steps=1,
+        acc_steps=acc_steps,
         opt=C(
             type='sgd',
             learning_rate=0.01,

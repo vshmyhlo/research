@@ -10,7 +10,7 @@ class FPN(nn.Module):
 
         self.c5_to_p6 = ConvNorm(featuremap_depths[5], 256, 3, stride=2)
         self.p6_to_p7 = nn.Sequential(
-            ReLU(inplace=True),
+            ReLU(),
             ConvNorm(256, 256, 3, stride=2)) if anchor_levels[7] else None
         self.c5_to_p5 = ConvNorm(featuremap_depths[5], 256, 1)
         self.p5c4_to_p4 = UpsampleMerge(featuremap_depths[4])
