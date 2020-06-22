@@ -1,12 +1,13 @@
 from all_the_tools.config import Config as C
 
 batch_size = 16
+image_size = 512
 
 config = C(
     seed=42,
     train_steps=1000,
-    resize_size=512,
-    crop_size=512,
+    resize_size=image_size,
+    crop_size=image_size,
     dataset='coco',
     model=C(
         backbone='resnet50',
