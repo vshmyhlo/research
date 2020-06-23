@@ -1,8 +1,8 @@
 from all_the_tools.config import Config as C
 
-batch_size = 8
-acc_steps = 2
-image_size = 640
+batch_size = 16
+acc_steps = 1
+image_size = 512
 
 config = C(
     seed=42,
@@ -11,6 +11,7 @@ config = C(
     crop_size=image_size,
     dataset='coco',
     model=C(
+        freeze_bn=batch_size < 16,
         backbone='resnet50',
         levels=[
             None,
@@ -31,9 +32,11 @@ config = C(
             learning_rate=0.01,
             weight_decay=1e-4,
             momentum=0.9),
-
         sched=C(
             type='step',
             steps=[60, 80])),
+    # sched=C(
+    #     type='warmup_cosine',
+    #     epochs_warmup=1)),
     eval=C(
         batch_size=batch_size * 2))
