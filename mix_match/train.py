@@ -15,8 +15,8 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from fix_match.utils import UDataset, XUDataLoader
+from lr_scheduler import WarmupCosineAnnealingLR
 from mix_match.model import Model
-from scheduler import WarmupCosineAnnealingLR
 from utils import compute_nrow, entropy, one_hot, weighted_sum
 
 NUM_CLASSES = 10

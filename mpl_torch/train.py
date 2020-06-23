@@ -15,9 +15,9 @@ from sklearn.model_selection import StratifiedKFold
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+from lr_scheduler import WarmupCosineAnnealingLR
 from mpl_torch.model import Model
 from mpl_torch.utils import XUDataLoader
-from scheduler import WarmupCosineAnnealingLR
 from utils import compute_nrow, one_hot
 from utils import cross_entropy, entropy
 

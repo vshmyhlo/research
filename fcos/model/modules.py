@@ -39,3 +39,28 @@ class Scale(nn.Module):
 
     def forward(self, input):
         return input * self.scale
+
+
+class BatchNormFreeze(nn.Module):
+    def __init__(self, module):
+        def freeze_bn(m):
+            if isinstance(m, nn.BatchNorm2d):
+                for p in m.parameters():
+                    p.requires_grad = False
+
+        super().__init__()
+
+        self.module = module
+        self.apply(freeze_bn)
+
+    def forward(self, *input):
+        return self.module(*input)
+
+    def train(self, mode=True):
+        def freeze_bn(m):
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
+
+        super().train(mode)
+
+        self.apply(freeze_bn)

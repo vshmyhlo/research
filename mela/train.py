@@ -17,10 +17,10 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from losses import lsep_loss, f1_loss, sigmoid_cross_entropy, sigmoid_focal_loss
+from lr_scheduler import WarmupCosineAnnealingLR
 from mela.dataset import Dataset2020KFold, ConcatDataset, Dataset2019
 from mela.model import Model
 from mela.transforms import LoadImage
-from scheduler import WarmupCosineAnnealingLR
 from transforms import ApplyTo, Extract
 from transforms.image import Random8
 from utils import compute_nrow, random_seed

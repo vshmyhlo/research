@@ -1,6 +1,6 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn as nn
 
 
 class BatchConv2DLayer(nn.Module):
@@ -96,3 +96,42 @@ class BatchLinearLayer(nn.Module):
             out = out + bias.unsqueeze(1)
 
         return out
+
+
+class CustomBatchNorm2d(nn.Module):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+        super().__init__()
+
+        self.eps = eps
+        self.momentum = momentum
+
+        self.weight = nn.Parameter(torch.Tensor(1, num_features, 1, 1))
+        self.bias = nn.Parameter(torch.Tensor(1, num_features, 1, 1))
+
+        self.register_buffer('running_mean', torch.Tensor(1, num_features, 1, 1))
+        self.register_buffer('running_var', torch.Tensor(1, num_features, 1, 1))
+
+        self.reset_parameters()
+        self.reset_running_stats()
+
+    def reset_parameters(self):
+        nn.init.ones_(self.weight)
+        nn.init.zeros_(self.bias)
+
+    def reset_running_stats(self):
+        self.running_mean.zero_()
+        self.running_var.fill_(1)
+
+    def forward(self, input):
+        if self.training:
+            with torch.no_grad():
+                mean = input.mean((0, 2, 3), keepdim=True)
+                var = torch.square(input - mean).mean((0, 2, 3), keepdim=True)
+
+                self.running_mean.add_(mean - self.running_mean, alpha=self.momentum)
+                self.running_var.add_(var - self.running_var, alpha=self.momentum)
+
+        input = (input - self.running_mean) / torch.sqrt(self.running_var + self.eps)
+        input = input * self.weight + self.bias
+
+        return input

@@ -25,10 +25,6 @@ class HeadSubnet(nn.Sequential):
 
 class FCOS(nn.Module):
     def __init__(self, model, num_classes):
-        def freeze_bn(m):
-            if isinstance(m, nn.BatchNorm2d):
-                for p in m.parameters():
-                    p.requires_grad = False
 
         super().__init__()
 
@@ -43,8 +39,7 @@ class FCOS(nn.Module):
         self.scales = nn.ModuleList([Scale() for _ in range(5)])
 
         prior_(self.class_head[-1].bias, 0.01)
-        self.apply(freeze_bn)
-      
+
     def forward(self, input):
         backbone_output = self.backbone(input)
         fpn_output = self.fpn(backbone_output)
@@ -73,11 +68,3 @@ class FCOS(nn.Module):
         cent_output = torch.cat(cent_output, 1)
 
         return class_output, loc_output, cent_output
-
-    def train(self, mode=True):
-        def freeze_bn(m):
-            if isinstance(m, nn.BatchNorm2d):
-                m.eval()
-
-        super().train(mode)
-        self.apply(freeze_bn)

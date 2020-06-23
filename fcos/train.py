@@ -14,7 +14,6 @@ from all_the_tools.config import load_config
 from all_the_tools.metrics import Mean, Last
 from all_the_tools.torch.utils import Saver
 from all_the_tools.transforms import ApplyTo
-from all_the_tools.utils import seed_python
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
@@ -24,18 +23,20 @@ from fcos.loss import compute_loss
 # from detection.map import per_class_precision_recall_to_map
 from fcos.metrics import FPS, PerClassPR
 from fcos.model import FCOS
+from fcos.model.modules import BatchNormFreeze
 from fcos.transforms import BuildTargets
 from fcos.utils import apply_recursively
 # from detection.model import RetinaNet
 from fcos.utils import draw_boxes
 from fcos.utils import foreground_binary_coding
+from lr_scheduler import WarmupCosineAnnealingLR
 # from detection.anchor_utils import compute_anchor
 # from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
 # from detection.box_utils import boxes_iou
 # from detection.config import build_default_config
 from object_detection.datasets.coco import Dataset as CocoDataset
 from object_detection.transforms import Resize, RandomCrop, RandomFlipLeftRight, FilterBoxes, denormalize
-from utils import random_seed, DataLoaderSlice
+from utils import random_seed, random_seed_python, DataLoaderSlice
 from utils import weighted_sum
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
@@ -97,7 +98,7 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def worker_init_fn(_):
-    seed_python(torch.initial_seed() % 2**32)
+    random_seed_python(torch.initial_seed() % 2**32)
 
 
 def compute_metric(input, target):
@@ -124,19 +125,25 @@ def build_optimizer(parameters, config):
         raise AssertionError('invalid config.train.opt.type {}'.format(config.train.opt.type))
 
 
-def build_scheduler(optimizer, config, epoch_size, start_epoch):
+def build_scheduler(optimizer, config, steps_per_epoch, start_epoch):
     # FIXME:
     if config.train.sched.type == 'cosine':
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=config.train.epochs * epoch_size,
-            last_epoch=start_epoch * epoch_size - 1)
+            T_max=config.train.epochs * steps_per_epoch,
+            last_epoch=start_epoch * steps_per_epoch - 1)
+    elif config.train.sched.type == 'warmup_cosine':
+        return WarmupCosineAnnealingLR(
+            optimizer,
+            epoch_warmup=config.train.sched.epochs_warmup * steps_per_epoch,
+            epoch_max=config.train.epochs * steps_per_epoch,
+            last_epoch=start_epoch * steps_per_epoch - 1)
     elif config.train.sched.type == 'step':
         return torch.optim.lr_scheduler.MultiStepLR(
             optimizer,
-            milestones=[e * epoch_size for e in config.train.sched.steps],
+            milestones=[e * steps_per_epoch for e in config.train.sched.steps],
             gamma=0.1,
-            last_epoch=start_epoch * epoch_size - 1)
+            last_epoch=start_epoch * steps_per_epoch - 1)
     else:
         raise AssertionError('invalid config.train.sched.type {}'.format(config.train.sched.type))
 
@@ -149,7 +156,10 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
 
     model.train()
     optimizer.zero_grad()
-    for i, batch in enumerate(tqdm(data_loader, desc='epoch {} train'.format(epoch)), 1):
+    for i, batch in tqdm(
+            enumerate(data_loader, 1),
+            desc='epoch {} train'.format(epoch),
+            total=len(data_loader)):
         images, targets, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
 
         output = model(images)
@@ -333,8 +343,10 @@ def main(config_path, **kwargs):
         worker_init_fn=worker_init_fn)
 
     model = FCOS(config.model, num_classes=Dataset.num_classes)
+    if config.model.freeze_bn:
+        model = BatchNormFreeze(model)
     model = model.to(DEVICE)
-
+   
     optimizer = build_optimizer(model.parameters(), config)
 
     saver = Saver({'model': model, 'optimizer': optimizer})

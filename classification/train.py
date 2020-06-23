@@ -37,13 +37,13 @@ def main(config_path, **kwargs):
     train_transform, eval_transform = build_transforms()
 
     train_data_loader = torch.utils.data.DataLoader(
-        torchvision.datasets.CIFAR10(config.dataset_path, train=True, transform=train_transform),
+        torchvision.datasets.CIFAR10(config.dataset_path, train=True, transform=train_transform, download=True),
         batch_size=config.train.batch_size,
         drop_last=True,
         shuffle=True,
         num_workers=config.workers)
     eval_data_loader = torch.utils.data.DataLoader(
-        torchvision.datasets.CIFAR10(config.dataset_path, train=False, transform=eval_transform),
+        torchvision.datasets.CIFAR10(config.dataset_path, train=False, transform=eval_transform, download=True),
         batch_size=config.eval.batch_size,
         num_workers=config.workers)
 

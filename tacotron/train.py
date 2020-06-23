@@ -13,7 +13,7 @@ from all_the_tools.torch.utils import Saver
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from scheduler import WarmupCosineAnnealingLR
+from lr_scheduler import WarmupCosineAnnealingLR
 from tacotron.dataset import LJ
 from tacotron.model import Model
 from tacotron.sampler import BatchSampler

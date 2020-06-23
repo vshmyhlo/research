@@ -3,6 +3,7 @@ from collections import namedtuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn as nn
 from PIL import ImageFont, Image, ImageDraw
 
 from object_detection.box_utils import boxes_clip
@@ -120,3 +121,13 @@ def flatten_detection_map(input):
     input = input.transpose(-1, -2)
 
     return input
+
+
+def replace_bn_with_gn(m):
+    if isinstance(m, nn.BatchNorm2d):
+        return nn.GroupNorm(num_channels=m.num_features, num_groups=32)
+
+    for n, c in m.named_children():
+        setattr(m, n, replace_bn_with_gn(c))
+
+    return m

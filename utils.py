@@ -150,12 +150,15 @@ def weighted_sum(left, right, a):
 
 
 def random_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    random_seed_python(seed)
 
+    torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
     # torch.cuda.manual_seed(seed)
     # torch.cuda.manual_seed_all(seed)
+
+
+def random_seed_python(seed):
+    random.seed(seed)
+    np.random.seed(seed)
