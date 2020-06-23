@@ -1,10 +1,12 @@
 __pycache__
 .idea
 .ipynb_checkpoints
+.coverage
 .DS_Store
+*.ipynb
 sync.sh
 tf_log
 ray_tracing/output
-*.ipynb
+htmlcov
 
 

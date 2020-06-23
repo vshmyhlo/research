@@ -27,10 +27,6 @@ class Detections(namedtuple('Detections', ['class_ids', 'boxes', 'scores'])):
             scores=apply(self.scores))
 
 
-def logit(input):
-    return torch.log(input / (1 - input))
-
-
 def fill_scores(dets):
     assert dets.scores is None
 

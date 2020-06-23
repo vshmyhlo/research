@@ -162,3 +162,7 @@ def random_seed(seed):
 def random_seed_python(seed):
     random.seed(seed)
     np.random.seed(seed)
+
+
+def worker_init_fn(_):
+    random_seed_python(torch.initial_seed() % 2**32)

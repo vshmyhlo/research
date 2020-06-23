@@ -10,11 +10,12 @@ def sigmoid_cross_entropy(input, target):
     return loss
 
 
-def sigmoid_focal_loss(input, target, gamma=2.):
+def sigmoid_focal_loss(input, target, gamma=2., alpha=0.25):
     prob = input.sigmoid()
     prob_true = prob * target + (1 - prob) * (1 - target)
-    weight = (1 - prob_true)**gamma
-
+    alpha_true = alpha * target + (1 - alpha) * (1 - target)
+    weight = alpha_true * (1 - prob_true)**gamma
+  
     loss = weight * sigmoid_cross_entropy(input=input, target=target)
 
     return loss

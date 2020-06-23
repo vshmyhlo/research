@@ -36,7 +36,7 @@ from lr_scheduler import WarmupCosineAnnealingLR
 # from detection.config import build_default_config
 from object_detection.datasets.coco import Dataset as CocoDataset
 from object_detection.transforms import Resize, RandomCrop, RandomFlipLeftRight, FilterBoxes, denormalize
-from utils import random_seed, random_seed_python, DataLoaderSlice
+from utils import random_seed, DataLoaderSlice, worker_init_fn
 from utils import weighted_sum
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
@@ -56,7 +56,6 @@ from utils import weighted_sum
 # TODO: random resize
 # TODO: plot box overlap distribution
 # TODO: smaller model/larger image
-# TODO: visualization scores sigmoid
 # TODO: move logits slicing to helpers
 # TODO: iou + l1
 # TODO: freeze BN
@@ -95,10 +94,6 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 #     if size is not None else None
 #     for size in config.anchors.sizes
 # ]
-
-
-def worker_init_fn(_):
-    random_seed_python(torch.initial_seed() % 2**32)
 
 
 def compute_metric(input, target):
@@ -346,7 +341,7 @@ def main(config_path, **kwargs):
     if config.model.freeze_bn:
         model = BatchNormFreeze(model)
     model = model.to(DEVICE)
-   
+
     optimizer = build_optimizer(model.parameters(), config)
 
     saver = Saver({'model': model, 'optimizer': optimizer})
