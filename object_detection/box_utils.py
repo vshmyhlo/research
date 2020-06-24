@@ -2,6 +2,10 @@ import torch
 import torchvision
 
 
+def pairwise(a, b):
+    return a.unsqueeze(1), b.unsqueeze(0)
+
+
 def boxes_to_tl_br(boxes):
     return torch.split(boxes, 2, -1)
 
@@ -86,24 +90,7 @@ def boxes_clip(boxes, hw):
 
 
 # TODO: test
-def per_class_nms(boxes, scores, class_ids, iou_threshold):
-    mask = torch.zeros(boxes.size(0), dtype=torch.bool)
-
-    for id in class_ids.unique():
-        subset_mask = class_ids == id
-        keep_mask = torch.zeros(subset_mask.sum(), dtype=torch.bool)
-
-        keep = torchvision.ops.nms(
-            boxes[subset_mask],
-            scores[subset_mask],
-            iou_threshold)
-
-        keep_mask[keep] = True
-        mask[subset_mask] = keep_mask
-
-    keep, = torch.where(mask)
-
-    return keep
+# TODO: pass dets
 
 
 def boxes_to_offsets(boxes, points):
@@ -126,10 +113,6 @@ def offsets_to_boxes(offsets, points):
     ], -1)
 
     return boxes
-
-
-def pairwise(a, b):
-    return a.unsqueeze(1), b.unsqueeze(0)
 
 
 def boxes_contain_points(boxes, points):

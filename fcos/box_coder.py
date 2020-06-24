@@ -1,8 +1,9 @@
 import torch
 
 from fcos.utils import Detections, flatten_detection_map
-from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_boxes, per_class_nms, pairwise, \
+from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_boxes, pairwise, \
     boxes_contain_points, tl_br_to_centers, boxes_to_tl_br, tl_br_to_boxes
+from object_detection.utils import per_class_nms
 
 
 class BoxCoder(object):
@@ -63,14 +64,19 @@ class BoxCoder(object):
         loc_maps *= strides.unsqueeze(1)
         loc_maps = offsets_to_boxes(loc_maps, yx_maps)
 
-        probs, class_ids = class_maps.max(1)
-        fg = probs > self.conf_threshold
+        scores, class_ids = class_maps.max(1)
+        fg = scores > self.conf_threshold
 
         boxes = loc_maps[fg]
         class_ids = class_ids[fg]
-        scores = torch.sqrt(probs[fg] * cent_maps[fg])
+        scores = scores[fg]
+        cents = cent_maps[fg]
 
-        keep = per_class_nms(boxes, scores, class_ids, self.iou_threshold)
+        keep = per_class_nms(
+            boxes,
+            torch.sqrt(scores * cents),
+            class_ids,
+            self.iou_threshold)
         boxes = boxes[keep]
         class_ids = class_ids[keep]
         scores = scores[keep]

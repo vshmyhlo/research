@@ -50,7 +50,7 @@ def draw_boxes(image, detections, class_names, line_width=2, shade=True):
 
     device = image.device
 
-    image = to_pil_image(image)
+    image = to_pil_image(image.cpu())
     image = np.array(image)
 
     if shade:
