@@ -9,7 +9,7 @@ class BoxCoder(object):
     def __init__(self, levels):
         self.levels = levels
         self.conf_threshold = 0.3
-        self.iou_threshold = 0.5
+        self.iou_threshold = 0.6
 
     def encode(self, dets, size):
         size = torch.tensor(size, dtype=torch.long)
@@ -69,7 +69,7 @@ class BoxCoder(object):
         boxes = loc_maps[fg]
         class_ids = class_ids[fg]
         scores = torch.sqrt(probs[fg] * cent_maps[fg])
-       
+
         keep = per_class_nms(boxes, scores, class_ids, self.iou_threshold)
         boxes = boxes[keep]
         class_ids = class_ids[keep]

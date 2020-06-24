@@ -5,9 +5,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import ImageFont, Image, ImageDraw
+from torch.nn import functional as F
+from torchvision.transforms.functional import to_tensor, to_pil_image
 
 from object_detection.box_utils import boxes_clip
-from utils import one_hot
+from utils import one_hot, weighted_sum
 
 
 class Detections(namedtuple('Detections', ['class_ids', 'boxes', 'scores'])):
@@ -36,6 +38,7 @@ def fill_scores(dets):
         scores=torch.ones_like(dets.class_ids, dtype=torch.float))
 
 
+# TODO: revisit
 # TODO: fix boxes usage
 def draw_boxes(image, detections, class_names, line_width=2, shade=True):
     font = ImageFont.truetype('./data/Droid+Sans+Mono+Awesome.ttf', size=14)
@@ -46,15 +49,16 @@ def draw_boxes(image, detections, class_names, line_width=2, shade=True):
         scores=detections.scores)
 
     device = image.device
-    image = image.permute(1, 2, 0).data.cpu().numpy()
+
+    image = to_pil_image(image)
+    image = np.array(image)
 
     if shade:
         mask = np.zeros_like(image, dtype=np.bool)
         for t, l, b, r in detections.boxes.data.cpu().numpy():
             mask[t:b, l:r] = True
-        image = np.where(mask, image, image * 0.5)
+        image = np.where(mask, image, image // 2)
 
-    image = (image * 255).astype(np.uint8)
     image = Image.fromarray(image)
     draw = ImageDraw.Draw(image)
 
@@ -75,8 +79,7 @@ def draw_boxes(image, detections, class_names, line_width=2, shade=True):
             color = tuple(color.round().astype(np.uint8))
         draw.rectangle(((l, t), (r, b)), outline=color, width=line_width)
 
-    image = np.array(image) / 255
-    image = torch.tensor(image).permute(2, 0, 1).to(device)
+    image = to_tensor(image).to(device)
 
     return image
 
@@ -127,3 +130,15 @@ def replace_bn_with_gn(m):
         setattr(m, n, replace_bn_with_gn(c))
 
     return m
+
+
+def draw_class_map(image, class_map, num_classes):
+    colors = np.random.RandomState(42).uniform(1 / 3, 1, size=(num_classes + 1, 3))
+    colors[0] = 0.
+    colors = torch.tensor(colors, dtype=torch.float, device=class_map.device)
+
+    class_map = colors[class_map]
+    class_map = class_map.permute(0, 3, 1, 2)
+    class_map = F.interpolate(class_map, size=image.size()[2:], mode='nearest')
+
+    return weighted_sum(image, class_map, 0.5)

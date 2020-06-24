@@ -5,7 +5,6 @@ import click
 import numpy as np
 import torch
 import torch.distributions
-import torch.nn.functional as F
 import torch.utils
 import torch.utils.data
 import torchvision
@@ -38,7 +37,6 @@ from lr_scheduler import WarmupCosineAnnealingLR
 from object_detection.datasets.coco import Dataset as CocoDataset
 from object_detection.transforms import Resize, RandomCrop, RandomFlipLeftRight, FilterBoxes, denormalize
 from utils import random_seed, DataLoaderSlice, worker_init_fn
-from utils import weighted_sum
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
 
@@ -73,28 +71,6 @@ from utils import weighted_sum
 MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--config-path', type=str, required=True)
-# parser.add_argument('--experiment-path', type=str, default='./tf_log/detection')
-# parser.add_argument('--dataset-path', type=str, required=True)
-# parser.add_argument('--restore-path', type=str)
-# parser.add_argument('--workers', type=int, default=os.cpu_count())
-# args = parser.parse_args()
-# config = build_default_config()
-# config.merge_from_file(args.config_path)
-# config.freeze()
-# os.makedirs(args.experiment_path, exist_ok=True)
-# shutil.copy(args.config_path, args.experiment_path)
-#
-#
-# ANCHOR_TYPES = list(itertools.product(config.anchors.ratios, config.anchors.scales))
-# ANCHORS = [
-#     [compute_anchor(size, ratio, scale) for ratio, scale in ANCHOR_TYPES]
-#     if size is not None else None
-#     for size in config.anchors.sizes
-# ]
 
 
 def compute_metric(input, target):
@@ -381,18 +357,6 @@ def main(config_path, **kwargs):
         gc.collect()
 
         saver.save(os.path.join(config.experiment_path, 'checkpoint.pth'), epoch=epoch + 1)
-
-
-def draw_class_map(image, class_map, num_classes):
-    colors = np.random.RandomState(42).uniform(1 / 3, 1, size=(num_classes + 1, 3))
-    colors[0] = 0.
-    colors = torch.tensor(colors, dtype=torch.float, device=class_map.device)
-
-    class_map = colors[class_map]
-    class_map = class_map.permute(0, 3, 1, 2)
-    class_map = F.interpolate(class_map, size=image.size()[2:], mode='nearest')
-
-    return weighted_sum(image, class_map, 0.5)
 
 
 if __name__ == '__main__':

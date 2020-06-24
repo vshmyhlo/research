@@ -1,6 +1,9 @@
+import matplotlib.pyplot as plt
 import torch
+from PIL import Image
+from torchvision.transforms.functional import to_tensor, to_pil_image
 
-from fcos.utils import foreground_binary_coding
+from fcos.utils import foreground_binary_coding, draw_boxes, Detections
 from losses import sigmoid_focal_loss
 
 
@@ -27,3 +30,16 @@ l1 = sigmoid_focal_loss(input=logits, target=foreground_binary_coding(target, nu
 l2 = sigmoid_focal_loss_cpu(logits=logits, targets=target, gamma=2, alpha=0.25)
 
 assert torch.allclose(l1, l2)
+
+dets = Detections(
+    boxes=torch.tensor([
+        [128, 128, 128 + 256, 128 + 256],
+
+    ], dtype=torch.float),
+    class_ids=torch.tensor([0], dtype=torch.long),
+    scores=torch.ones([1], dtype=torch.float))
+image = to_tensor(Image.open('./image.jpeg').resize((512, 512)))
+image = draw_boxes(image, dets, ['c1', 'c2', 'c3'])
+image = to_pil_image(image)
+plt.imshow(image)
+plt.show()
