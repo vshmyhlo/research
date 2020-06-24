@@ -13,19 +13,25 @@ def compute_loss(input, target):
     # classification loss
     class_mask = target_class != -1
     class_loss = compute_classification_loss(input=input_class[class_mask], target=target_class[class_mask])
+    class_loss /= num_pos
 
     # localization loss
     loc_mask = target_class > 0
     loc_loss = compute_localization_loss(input=input_loc[loc_mask], target=target_loc[loc_mask])
+    loc_loss /= num_pos
 
     # centerness loss
     cent_mask = target_class > 0
     cent_loss = compute_centerness_loss(input=input_cent[cent_mask], target=target_cent[cent_mask])
+    cent_loss /= num_pos
 
     assert class_loss.size() == loc_loss.size() == cent_loss.size()
-    loss = (class_loss + loc_loss + cent_loss) / num_pos
 
-    return loss
+    return {
+        'class': class_loss,
+        'loc': loc_loss,
+        'cent': cent_loss,
+    }
 
 
 def compute_classification_loss(input, target):

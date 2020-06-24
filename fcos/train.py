@@ -11,7 +11,8 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
-from all_the_tools.metrics import Mean, Last
+from all_the_tools.metrics import Last
+from all_the_tools.torch.metrics import Mean
 from all_the_tools.torch.utils import Saver
 from all_the_tools.transforms import ApplyTo
 from tensorboardX import SummaryWriter
@@ -146,6 +147,9 @@ def build_scheduler(optimizer, config, steps_per_epoch, start_epoch):
 def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names, epoch, config):
     metrics = {
         'loss': Mean(),
+        'loss/class': Mean(),
+        'loss/loc': Mean(),
+        'loss/cent': Mean(),
         'learning_rate': Last(),
     }
 
@@ -159,9 +163,12 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
 
         output = model(images)
 
-        loss = compute_loss(input=output, target=targets)
+        loss_dict = compute_loss(input=output, target=targets)
+        loss = sum(loss_dict.values())
 
-        metrics['loss'].update(loss.data.cpu().numpy())
+        metrics['loss'].update(loss.data.cpu())
+        for k in loss_dict:
+            metrics['loss/{}'.format(k)].update(loss_dict[k].data.cpu())
         metrics['learning_rate'].update(np.squeeze(scheduler.get_lr()))
 
         (loss.mean() / config.train.acc_steps).backward()
@@ -180,10 +187,10 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
         images = denormalize(images, mean=MEAN, std=STD)
 
         dets_true = [
-            box_coder.decode(foreground_binary_coding(c, 80), r, images.size()[2:])
+            box_coder.decode(foreground_binary_coding(c, 80), r, s, images.size()[2:])
             for c, r, s in zip(*targets)]
         dets_pred = [
-            box_coder.decode(c.sigmoid(), r, images.size()[2:])
+            box_coder.decode(c.sigmoid(), r, s.sigmoid(), images.size()[2:])
             for c, r, s in zip(*output)]
 
         true = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_true)]

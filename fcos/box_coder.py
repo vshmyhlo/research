@@ -40,7 +40,7 @@ class BoxCoder(object):
 
         return class_maps, loc_maps, cent_maps
 
-    def decode(self, class_maps, loc_maps, size):
+    def decode(self, class_maps, loc_maps, cent_maps, size):
         size = torch.tensor(size, dtype=torch.long)
 
         strides = []
@@ -63,14 +63,13 @@ class BoxCoder(object):
         loc_maps *= strides.unsqueeze(1)
         loc_maps = offsets_to_boxes(loc_maps, yx_maps)
 
-        scores, class_ids = class_maps.max(1)
-        fg = scores > self.conf_threshold
+        probs, class_ids = class_maps.max(1)
+        fg = probs > self.conf_threshold
 
-        boxes = loc_maps
-        boxes = boxes[fg]
+        boxes = loc_maps[fg]
         class_ids = class_ids[fg]
-        scores = scores[fg]
-
+        scores = torch.sqrt(probs[fg] * cent_maps[fg])
+       
         keep = per_class_nms(boxes, scores, class_ids, self.iou_threshold)
         boxes = boxes[keep]
         class_ids = class_ids[keep]

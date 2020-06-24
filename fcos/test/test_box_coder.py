@@ -26,7 +26,7 @@ def test_box_coder():
 
     class_maps, loc_maps, cent_maps = box_coder.encode(expected, size)
     class_maps = foreground_binary_coding(class_maps, 10)
-    actual = box_coder.decode(class_maps, loc_maps, size)
+    actual = box_coder.decode(class_maps, loc_maps, cent_maps, size)
 
     assert torch.allclose(actual.boxes, expected.boxes)
     assert torch.allclose(actual.class_ids, expected.class_ids)
