@@ -1,6 +1,6 @@
 import torch
 
-from fcos.box_coder import boxes_to_map, build_yx_map, compute_sub_boxes, BoxCoder
+from fcos.box_coder import boxes_to_map, build_yx_map, compute_sub_boxes, BoxCoder, compute_centerness
 from fcos.utils import Detections, flatten_detection_map, foreground_binary_coding
 
 
@@ -84,6 +84,23 @@ def test_compute_sub_boxes():
     actual = compute_sub_boxes(boxes, 20)
     expected = torch.tensor([
         [20, 0, 80, 20],
+    ], dtype=torch.float)
+
+    assert torch.allclose(actual, expected)
+
+
+def test_copmute_centerness():
+    offsets = torch.tensor([
+        [0, 0, 1, 1],
+        [0.5, 0.5, 0.5, 0.5],
+        [0.25, 0.5, 1, 1],
+    ], dtype=torch.float)
+
+    actual = compute_centerness(offsets)
+    expected = torch.tensor([
+        0,
+        1,
+        0.3535533905932738,
     ], dtype=torch.float)
 
     assert torch.allclose(actual, expected)
