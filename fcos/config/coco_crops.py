@@ -1,8 +1,8 @@
 from all_the_tools.config import Config as C
 
+image_size = 512
 batch_size = 16
 acc_steps = 1
-image_size = 512
 
 config = C(
     seed=42,

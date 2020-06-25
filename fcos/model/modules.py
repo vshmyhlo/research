@@ -45,8 +45,7 @@ class BatchNormFreeze(nn.Module):
     def __init__(self, module):
         def freeze_bn(m):
             if isinstance(m, nn.BatchNorm2d):
-                for p in m.parameters():
-                    p.requires_grad = False
+                m.requires_grad_(False)
 
         super().__init__()
 
@@ -64,3 +63,9 @@ class BatchNormFreeze(nn.Module):
         super().train(mode)
 
         self.apply(freeze_bn)
+
+    def state_dict(self, *args, **kwargs):
+        return self.module.state_dict(*args, **kwargs)
+
+    def load_state_dict(self, *args, **kwargs):
+        return self.module.load_state_dict(*args, **kwargs)
