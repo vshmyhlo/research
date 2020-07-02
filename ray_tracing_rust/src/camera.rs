@@ -1,30 +1,28 @@
-use std::ops::Mul;
-
-use num::Float;
-
 use crate::ray::Ray;
 use crate::vector::Vector3;
 
-pub struct Camera<T> {
-    origin: Vector3<T>
+pub struct Camera {
+    origin: Vector3
 }
 
-impl<T> Camera<T> {
-    pub fn new(origin: Vector3<T>) -> Self {
+impl Camera {
+    pub fn new(origin: Vector3) -> Self {
         Self {
-            origin: origin
+            origin
         }
     }
 }
 
 
-impl<T> Camera<T> where T: Float + From<f32> {
-    pub fn position_ray(&self, u: T, v: T) -> Ray<T> {
-        let position = Vector3::new(
-            u * 2_f32.into() - 1_f32.into(),
-            v * 2_f32.into() - 1_f32.into(),
-            0_f32.into(),
-        );
-        Ray::new(self.origin, position - self.origin)
+impl Camera {
+    pub fn position_ray(&self, u: f32, v: f32) -> Ray {
+        let pixel_position = Vector3 {
+            x: u * 2_f32 - 1_f32,
+            y: v * 2_f32 - 1_f32,
+            z: 0_f32,
+        };
+
+
+        Ray::new(self.origin, pixel_position - self.origin)
     }
 }

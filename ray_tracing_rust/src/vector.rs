@@ -1,29 +1,22 @@
 extern crate num;
 
-use std::ops::{Add, AddAssign, Div, Mul, Sub};
+use std::fmt::Display;
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
-use image::Primitive;
-use num::{Float, NumCast, Zero};
+use num::Zero;
+use rand::distributions::Uniform;
+use rand::Rng;
 
-#[derive(Copy, Clone)]
-pub struct Vector3<T> {
-    x: T,
-    y: T,
-    z: T,
-}
+#[derive(Debug, Copy, Clone)]
+pub struct Vector3 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 
-impl<T> Vector3<T> {
-    pub fn new(x: T, y: T, z: T) -> Self {
-        Self {
-            x: x,
-            y: y,
-            z: z,
-        }
-    }
 }
 
 
-impl<T> Vector3<T> where T: Float {
+impl Vector3 {
     pub fn round(self) -> Self {
         Self {
             x: self.x.round(),
@@ -32,30 +25,49 @@ impl<T> Vector3<T> where T: Float {
         }
     }
 
+
     pub fn normalize(self) -> Self {
         self / self.norm()
     }
 
-    pub fn dot(self, other: Self) -> T {
+    pub fn dot(self, other: Self) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
 
-    pub fn norm(self) -> T {
+    pub fn norm(self) -> f32 {
         self.dot(self).sqrt()
     }
-}
 
-impl<T> Vector3<T> where T: Float, u8: NumCast {
-    pub fn cast_u8(self) -> Vector3<u8> {
+    pub fn reflect(v: Vector3, n: Vector3) -> Vector3 {
+        v - n * 2. * v.dot(n)
+    }
+
+
+    pub fn random_unit() -> Self {
+        let mut rng = rand::thread_rng();
+        let dist = Uniform::new(-1_f32, 1_f32);
+
         Vector3 {
-            x: NumCast::from(self.x).unwrap(),
-            y: NumCast::from(self.y).unwrap(),
-            z: NumCast::from(self.z).unwrap(),
+            x: rng.sample(dist),
+            y: rng.sample(dist),
+            z: rng.sample(dist),
+        }.normalize()
+    }
+
+
+    pub fn random_in_hemisphere(n: Vector3) -> Vector3 {
+        let v = Self::random_unit();
+
+        if v.dot(n) > 0.0 {
+            return v;
+        } else {
+            return -v;
         }
     }
 }
 
-impl<T> Add for Vector3<T> where T: Add<Output=T> {
+
+impl Add<Self> for Vector3 {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
@@ -67,8 +79,20 @@ impl<T> Add for Vector3<T> where T: Add<Output=T> {
     }
 }
 
+impl Add<f32> for Vector3 {
+    type Output = Self;
 
-impl<T> Sub<Self> for Vector3<T> where T: Sub<T, Output=T> {
+    fn add(self, other: f32) -> Self::Output {
+        Self {
+            x: self.x + other,
+            y: self.y + other,
+            z: self.z + other,
+        }
+    }
+}
+
+
+impl Sub<Self> for Vector3 {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
@@ -80,10 +104,10 @@ impl<T> Sub<Self> for Vector3<T> where T: Sub<T, Output=T> {
     }
 }
 
-impl<T> Sub<T> for Vector3<T> where T: Sub<T, Output=T> + Copy {
+impl Sub<f32> for Vector3 {
     type Output = Self;
 
-    fn sub(self, other: T) -> Self::Output {
+    fn sub(self, other: f32) -> Self::Output {
         Self {
             x: self.x - other,
             y: self.y - other,
@@ -92,7 +116,7 @@ impl<T> Sub<T> for Vector3<T> where T: Sub<T, Output=T> + Copy {
     }
 }
 
-impl<T> Mul<Self> for Vector3<T> where T: Mul<T, Output=T> + Copy {
+impl Mul<Self> for Vector3 {
     type Output = Self;
 
     fn mul(self, other: Self) -> Self::Output {
@@ -104,10 +128,10 @@ impl<T> Mul<Self> for Vector3<T> where T: Mul<T, Output=T> + Copy {
     }
 }
 
-impl<T> Mul<T> for Vector3<T> where T: Mul<T, Output=T> + Copy {
+impl Mul<f32> for Vector3 {
     type Output = Self;
 
-    fn mul(self, other: T) -> Self::Output {
+    fn mul(self, other: f32) -> Self::Output {
         Self {
             x: self.x * other,
             y: self.y * other,
@@ -116,10 +140,10 @@ impl<T> Mul<T> for Vector3<T> where T: Mul<T, Output=T> + Copy {
     }
 }
 
-impl<T> Div<T> for Vector3<T> where T: Div<T, Output=T> + Copy {
+impl Div<f32> for Vector3 {
     type Output = Self;
 
-    fn div(self, other: T) -> Self::Output {
+    fn div(self, other: f32) -> Self::Output {
         Self {
             x: self.x / other,
             y: self.y / other,
@@ -128,7 +152,7 @@ impl<T> Div<T> for Vector3<T> where T: Div<T, Output=T> + Copy {
     }
 }
 
-impl<T> AddAssign for Vector3<T> where T: AddAssign {
+impl AddAssign for Vector3 {
     fn add_assign(&mut self, other: Self) {
         self.x += other.x;
         self.y += other.y;
@@ -136,12 +160,23 @@ impl<T> AddAssign for Vector3<T> where T: AddAssign {
     }
 }
 
-impl<T> Zero for Vector3<T> where T: Zero {
+impl Neg for Vector3 {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+}
+
+impl Zero for Vector3 {
     fn zero() -> Self {
         Self {
-            x: T::zero(),
-            y: T::zero(),
-            z: T::zero(),
+            x: f32::zero(),
+            y: f32::zero(),
+            z: f32::zero(),
         }
     }
 

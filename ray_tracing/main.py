@@ -1,109 +1,108 @@
-from itertools import product
+import os
+import random
+from functools import partial
+from multiprocessing import Pool
 
+import click
 import matplotlib.pyplot as plt
 import torch
 from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 
-from ray_tracing.light import Light
-from ray_tracing.material import Metal
-from ray_tracing.objects import Sphere, Object
+import utils
+from ray_tracing.camera import Camera
+from ray_tracing.material import Metal, Diffuse, Light
+from ray_tracing.objects import Sphere, ObjectList
 from ray_tracing.ray import Ray
-from ray_tracing.scene import Scene
 from ray_tracing.vector import vector, normalize
 
 
-def build_view(size):
-    def build_axis(size):
-        step = 2 / size
-        axis = torch.arange(-1, 1, step) + step / 2
+def randomize_objects():
+    floor = Sphere(vector(0, -102, 1), 100, Diffuse(vector(1 / 3, 1 / 3, 1 / 3)))
+    objects = [floor]
 
-        return axis
+    for _ in range(8):
+        floor_to_center = vector(0, -2, 1) - floor.center
+        floor_to_center[0] += random.uniform(-4, 4)
+        floor_to_center[2] += random.uniform(0, 8)
 
-    y = build_axis(size[0])
-    x = build_axis(size[1])
-    yx = torch.stack(torch.meshgrid(y, x), 0)
-    yx = torch.cat([yx, torch.zeros_like(yx[:1])])
+        radius = random.uniform(0.25, 1.5)
+        center = floor.center + normalize(floor_to_center) * floor.radius + radius
 
-    return yx
+        mat = random.choice([Diffuse, Metal])
+
+        object = Sphere(center, radius, mat(vector(0, 0, 0).uniform_(0, 1)))
+        objects.append(object)
+
+    objects[8].material = Light(vector(1, 1, 1))
+
+    return objects
 
 
-def main():
-    size = 256, 256
+@click.command()
+@click.option('--size', type=click.INT, required=True)
+@click.option('--k', type=click.INT, required=True)
+@click.option('--steps', type=click.INT, required=True)
+@click.option('--output-path', type=click.Path(), default='./ray_tracing/output')
+def main(size, k, steps, output_path):
+    # utils.random_seed(2**7)
+    utils.random_seed(2**10)
+    size = size, size
 
-    camera = vector(0, 0, -1)
-    objects = [
-        Sphere(vector(0, 0, 0), 0.5, Metal(vector(1, 0, 0))),
-        Sphere(vector(0, -1, 1), 0.5, Metal(vector(0, 1, 0))),
-    ]
-    lights = [
-        Light(vector(1.5, -0.5, -10), vector(1, 1, 1)),
-    ]
-    scene = Scene(
-        camera=camera,
-        objects=objects,
-        lights=lights)
+    camera = Camera(vector(0, 0, -1))
+    objects = ObjectList(randomize_objects())
 
-    view = build_view(size)
-    image = torch.zeros(3, *size, dtype=torch.float)
+    with Pool(os.cpu_count()) as pool:
+        image = pool.imap(
+            partial(render_row, size=size, camera=camera, objects=objects, k=k, max_steps=steps),
+            range(size[0]))
+        image = list(tqdm(image, total=size[0]))
 
-    for i, j in tqdm(product(range(size[0]), range(size[1])), total=size[0] * size[1]):
-        ray = Ray(camera, view[:, i, j] - camera)
-        image[:, i, j] = ray_trace(ray, scene)
-
+    image = torch.stack(image, 1)
+    image = image.clamp(0, 1)
+    image = image.flip(1)
     image = to_pil_image(image)
-    image.save('./ray_tracing/output.png')
+
+    os.makedirs(output_path, exist_ok=True)
+    image.save(os.path.join(output_path, '{}_{}_{}.png'.format(size[0], k, steps)))
     plt.imshow(image)
     plt.show()
 
 
-def ray_trace(ray: Ray, scene: Scene):
-    color = vector()
+def render_row(i, size, camera: Camera, objects: ObjectList, k, max_steps):
+    utils.random_seed(i)
 
-    ot = None
-    for object in scene.objects:
-        t = object.intersects(ray)
-        if t is None:
-            continue
-        if ot is None:
-            ot = object, t
-        if t < ot[1]:
-            ot = object, t
+    row = torch.zeros(3, size[1], dtype=torch.float)
+    for j in range(size[1]):
+        for _ in range(k):
+            y = (i + random.random()) / size[0]
+            x = (j + random.random()) / size[1]
 
-    if ot is None:
-        return color
+            ray = camera.ray_to_position(x, y)
+            row[:, j] += ray_trace(ray, objects, max_steps=max_steps)
 
-    object, t = ot
-    del ot
+        row[:, j] /= k
 
-    position = ray.position_at(t)
-    normal = object.normal(position)
-    color += color_at(object, position, normal, scene)
-
-    return color
+    return row
 
 
-def color_at(object: Object, position, normal, scene: Scene):
-    color = vector()
-    color = object.material.ambient * color
+def ray_trace(ray: Ray, objects: ObjectList, max_steps):
+    if max_steps == 0:
+        return vector(0, 0, 0)
 
-    to_cam = scene.camera - position
-    specular_k = 50
+    intersection = objects.intersects(ray)
+    if intersection is None:
+        return vector(0.2, 0.2, 0.2)
 
-    for light in scene.lights:
-        to_light = Ray(position, light.position - position)
-        color += object.material.color * \
-                 object.material.diffuse * \
-                 max(torch.dot(normal, to_light.direction), 0)
+    position = ray.position_at(intersection.t)
+    normal = intersection.object.normal(position)
 
-        half_vector = normalize(to_light.direction + to_cam)
-        color += light.color * \
-                 object.material.specular * \
-                 max(torch.dot(normal, half_vector), 0)**specular_k
+    emitted = intersection.object.material.emit()
+    reflection = intersection.object.material.reflect(ray, intersection.t, normal)
+    if reflection is None:
+        return emitted
 
-    color = color.clamp(0, 1)
-
-    return color
+    return emitted + reflection.attenuation * ray_trace(reflection.ray, objects, max_steps - 1)
 
 
 if __name__ == '__main__':

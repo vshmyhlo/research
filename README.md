@@ -5,3 +5,4 @@
 * [Meta Pseudo Labels](./mpl_torch) (PyTorch, CIFAR-10 SSL)
 * [MixMatch](./mix_match) 
 * [Tacotron2](./tacotron) 
+* [FCOS](./fcos)

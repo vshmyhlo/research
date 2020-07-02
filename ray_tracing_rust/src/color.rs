@@ -1,32 +1,25 @@
 extern crate num;
 
-use std::convert::{From, Into};
-use std::ops::Mul;
 
 use image::Rgb;
-use num::{Float, Zero};
+use num::Zero;
 
 use crate::vector::Vector3;
 
-pub type Color<T> = Vector3<T>;
+pub type Color = Vector3;
 
-impl<T> Color<T> where T: Zero {
+
+impl Color {
     pub fn black() -> Self {
         Self::zero()
     }
 }
 
 
-impl<T> Color<T> where T: Float + From<u8> {
-    pub fn to_rgb(self) -> Vector3<u8> {
-        (self * Into::<T>::into(255_u8)).round().cast_u8()
-    }
-}
-
-
-impl Color<u8> {
-    pub fn to_pixel(self) -> Rgb<u8> {
-        Rgb([1, 2, 3])
+impl Color {
+    pub fn to_rgb_pixel(self) -> Rgb<u8> {
+        let rgb = (self * 255_f32).round();
+        Rgb([rgb.x as u8, rgb.y as u8, rgb.z as u8])
     }
 }
 
