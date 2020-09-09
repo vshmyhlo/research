@@ -1,6 +1,6 @@
 import torch
 
-from ray_tracing.material import Metal, Material
+from ray_tracing.material import Material
 from ray_tracing.ray import Ray
 from ray_tracing.vector import normalize
 
@@ -39,7 +39,7 @@ class ObjectList(object):
 
 
 class Sphere(Object):
-    def __init__(self, center, radius, material: Metal):
+    def __init__(self, center, radius, material: Material):
         super().__init__(material=material)
 
         self.center = center
@@ -62,5 +62,5 @@ class Sphere(Object):
 
         return t
 
-    def normal(self, position):
+    def normal_at(self, position):
         return normalize(position - self.center)

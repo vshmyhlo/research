@@ -77,7 +77,7 @@ def ray_trace(ray: Ray, scene: Scene):
     del ot
 
     position = ray.position_at(t)
-    normal = object.normal(position)
+    normal = object.normal_at(position)
     color += color_at(object, position, normal, scene)
 
     return color

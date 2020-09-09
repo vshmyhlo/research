@@ -95,7 +95,7 @@ def ray_trace(ray: Ray, objects: ObjectList, max_steps):
         return vector(0.2, 0.2, 0.2)
 
     position = ray.position_at(intersection.t)
-    normal = intersection.object.normal(position)
+    normal = intersection.object.normal_at(position)
 
     emitted = intersection.object.material.emit()
     reflection = intersection.object.material.reflect(ray, intersection.t, normal)
