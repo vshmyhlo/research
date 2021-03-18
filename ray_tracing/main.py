@@ -40,13 +40,13 @@ def randomize_objects():
 
 
 @click.command()
-@click.option('--size', type=click.INT, required=True)
-@click.option('--k', type=click.INT, required=True)
-@click.option('--steps', type=click.INT, required=True)
-@click.option('--output-path', type=click.Path(), default='./ray_tracing/output')
+@click.option("--size", type=click.INT, required=True)
+@click.option("--k", type=click.INT, required=True)
+@click.option("--steps", type=click.INT, required=True)
+@click.option("--output-path", type=click.Path(), default="./ray_tracing/output")
 def main(size, k, steps, output_path):
     # utils.random_seed(2**7)
-    utils.random_seed(2**10)
+    utils.random_seed(2 ** 10)
     size = size, size
 
     camera = Camera(vector(0, 0, -1))
@@ -54,8 +54,16 @@ def main(size, k, steps, output_path):
 
     with Pool(os.cpu_count()) as pool:
         image = pool.imap(
-            partial(render_row, size=size, camera=camera, objects=objects, k=k, max_steps=steps),
-            range(size[0]))
+            partial(
+                render_row,
+                size=size,
+                camera=camera,
+                objects=objects,
+                k=k,
+                max_steps=steps,
+            ),
+            range(size[0]),
+        )
         image = list(tqdm(image, total=size[0]))
 
     image = torch.stack(image, 1)
@@ -64,7 +72,7 @@ def main(size, k, steps, output_path):
     image = to_pil_image(image)
 
     os.makedirs(output_path, exist_ok=True)
-    image.save(os.path.join(output_path, '{}_{}_{}.png'.format(size[0], k, steps)))
+    image.save(os.path.join(output_path, "{}_{}_{}.png".format(size[0], k, steps)))
     plt.imshow(image)
     plt.show()
 
@@ -102,8 +110,10 @@ def ray_trace(ray: Ray, objects: ObjectList, max_steps):
     if reflection is None:
         return emitted
 
-    return emitted + reflection.attenuation * ray_trace(reflection.ray, objects, max_steps - 1)
+    return emitted + reflection.attenuation * ray_trace(
+        reflection.ray, objects, max_steps - 1
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
