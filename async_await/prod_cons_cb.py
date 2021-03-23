@@ -1,30 +1,55 @@
 import queue
 import threading
-import time
+from collections import deque
+from functools import partial
 
-from async_await.scheduler import Scheduler
-
-
-def producer(q, count):
-    for n in range(count):
-        print("producing", n)
-        q.put(n)
-        time.sleep(1)
-
-    print("producer done")
-    q.put(None)
+from async_await.scheduler_cb import Scheduler
 
 
-def consumer(q):
-    while True:
-        n = q.get()
+class AsyncQueue:
+    def __init__(self):
+        self.items = deque()
+        self.waiting = deque()
+
+    def put(self, item):
+        self.items.append(item)
+        if self.waiting:
+            func = self.waiting.popleft()
+            sched.call_soon(func)
+
+    def get(self, callback):
+        if self.items:
+            callback(self.items.popleft())
+        else:
+            self.waiting.append(partial(self.get, callback))
+
+
+def producer(q: AsyncQueue, count):
+    def _produce(n):
+        if n < count:
+            print("producing", n)
+            q.put(n)
+            sched.call_later(1, partial(_produce, n + 1))
+        else:
+            print("producer done")
+            q.put(None)
+
+    _produce(0)
+
+
+def consumer(q: AsyncQueue):
+    def _consume(n):
         if n is None:
-            break
-        print("consuming", n)
+            print("consumer done")
+        else:
+            print("consuming", n)
+            q.get(_consume)
 
-    print("consumer done")
+    q.get(_consume)
 
 
-q = queue.Queue()
-threading.Thread(target=producer, args=(q, 10)).start()
-threading.Thread(target=consumer, args=(q,)).start()
+sched = Scheduler()
+q = AsyncQueue()
+sched.call_soon(partial(producer, q, 10))
+sched.call_soon(partial(consumer, q))
+sched.run()

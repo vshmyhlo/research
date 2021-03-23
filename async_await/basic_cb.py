@@ -1,7 +1,6 @@
-import time
 from functools import partial
 
-from async_await.scheduler import Scheduler
+from async_await.scheduler_cb import Scheduler
 
 
 def countdown(n):
