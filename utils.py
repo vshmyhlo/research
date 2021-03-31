@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.optim
 import torchvision
 from matplotlib import pyplot as plt
