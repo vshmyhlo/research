@@ -48,7 +48,7 @@ class Client:
             res = await self.get_json(path)
             if res is None:
                 break
-            print("fetched page {}".format(page))
+            print("fetched {}, page {}".format(genre, page))
             for p in res["Paintings"]:
                 yield p
             page += 1
@@ -84,15 +84,24 @@ def main(genre):
 
 async def main_async(genres):
     output_path = os.path.join("./data/wikiart")
-    for genre in genres:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout()) as sess:
-            client = Client(sess)
-            tasks = []
-            sem = asyncio.Semaphore(64)
-            async for paint in client.paintings_by_genre(genre):
-                tasks.append(asyncio.create_task(client.download_image(paint, output_path, sem)))
-            for task in tasks:
-                await task
+
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout()) as sess:
+        client = Client(sess)
+        sem = asyncio.Semaphore(64)
+
+        tasks = []
+        for genre in genres:
+            tasks.append(asyncio.create_task(download_genre(genre, output_path, client, sem)))
+        for task in tasks:
+            await task
+
+
+async def download_genre(genre, output_path, client, sem):
+    tasks = []
+    async for paint in client.paintings_by_genre(genre):
+        tasks.append(asyncio.create_task(client.download_image(paint, output_path, sem)))
+    for task in tasks:
+        await task
 
 
 def with_query(base, query):
