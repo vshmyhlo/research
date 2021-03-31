@@ -14,7 +14,6 @@ class Client:
 
     async def get_json(self, path: str):
         url = f"https://www.wikiart.org{path}"
-        print(url)
         async with self.sess.get(url) as res:
             if res.content_type != "application/json":
                 return None
@@ -47,10 +46,14 @@ class Client:
                 {"json": "2", "page": str(page)},
             )
             res = await self.get_json(path)
+            print("fetched {}, page {}".format(genre, page))
+
             if res is None:
                 break
-            print("fetched {}, page {}".format(genre, page))
-            paintings = res.get("Paintings", []) or []
+            paintings = res.get("Paintings")
+            if paintings is None:
+                break
+
             for p in paintings:
                 yield p
             page += 1
@@ -86,7 +89,7 @@ def main(genre):
 
 async def main_async(genres):
     output_path = os.path.join("./data/wikiart")
-    sem = asyncio.Semaphore(32)
+    sem = asyncio.Semaphore(64)
     # tasks = []
     for genre in genres:
         # tasks.append(asyncio.create_task(download_genre(genre, output_path, sem)))
