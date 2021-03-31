@@ -85,7 +85,7 @@ def main(genre):
 
 async def main_async(genres):
     output_path = os.path.join("./data/wikiart")
-    sem = asyncio.Semaphore(64)
+    sem = asyncio.Semaphore(32)
     # tasks = []
     for genre in genres:
         # tasks.append(asyncio.create_task(download_genre(genre, output_path, sem)))
