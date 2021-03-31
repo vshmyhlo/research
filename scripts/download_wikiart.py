@@ -51,6 +51,7 @@ class Client:
             print("fetched {}, page {}".format(genre, page))
             try:
                 paintings = res["Paintings"]
+                assert paintings is not None
             except:
                 print(res)
                 break
