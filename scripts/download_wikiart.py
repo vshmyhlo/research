@@ -85,25 +85,24 @@ def main(genre):
 
 async def main_async(genres):
     output_path = os.path.join("./data/wikiart")
-
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout()) as sess:
-        client = Client(sess)
-        sem = asyncio.Semaphore(64)
-
-        tasks = []
-        for genre in genres:
-            # tasks.append(asyncio.create_task(download_genre(genre, output_path, client, sem)))
-            await download_genre(genre, output_path, client, sem)
-        for task in tasks:
-            await task
-
-
-async def download_genre(genre, output_path, client, sem):
+    sem = asyncio.Semaphore(64)
     tasks = []
-    async for paint in client.paintings_by_genre(genre):
-        tasks.append(asyncio.create_task(client.download_image(paint, output_path, sem)))
+    for genre in genres:
+        tasks.append(asyncio.create_task(download_genre(genre, output_path, client, sem)))
+        # await download_genre(genre, output_path, sem)
     for task in tasks:
         await task
+
+
+async def download_genre(genre, output_path, sem):
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout()) as sess:
+        client = Client(sess)
+
+        tasks = []
+        async for paint in client.paintings_by_genre(genre):
+            tasks.append(asyncio.create_task(client.download_image(paint, output_path, sem)))
+        for task in tasks:
+            await task
 
 
 def with_query(base, query):
