@@ -45,6 +45,7 @@ class Client:
                 "/en/paintings-by-genre/{}".format(genre),
                 {"json": "2", "page": str(page)},
             )
+            print(path)
             res = await self.get_json(path)
             if res is None:
                 break
