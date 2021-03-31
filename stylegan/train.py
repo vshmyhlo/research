@@ -281,6 +281,7 @@ def main(config_path, **kwargs):
             torch.save(
                 {
                     "gen": gen.state_dict(),
+                    "gen_ema": gen_ema.state_dict(),
                     "dsc": dsc.state_dict(),
                     "opt_gen": opt_gen.state_dict(),
                     "opt_dsc": opt_dsc.state_dict(),
