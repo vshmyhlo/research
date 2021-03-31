@@ -1,5 +1,5 @@
 import math
-import random
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -7,46 +7,30 @@ import torch.optim
 import torchvision
 from matplotlib import pyplot as plt
 
-COLORS = ('#1f77b4', '#ff7f0e', '#3ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf')
+COLORS = (
+    "#1f77b4",
+    "#ff7f0e",
+    "#3ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+    "#bcbd22",
+    "#17becf",
+)
 
 
-class DataLoaderSlice(object):
-    def __init__(self, data_loader, size):
-        self.data_loader = data_loader
-        self.size = size
-        self.iter = None
-
-    def __len__(self):
-        return self.size
-
-    def __iter__(self):
-        i = 0
-        while i < self.size:
-            if self.iter is None:
-                self.iter = iter(self.data_loader)
-
-            try:
-                yield next(self.iter)
-                i += 1
-            except StopIteration:
-                self.iter = None
-
-
-class Zip(object):
-    def __init__(self, *iterables):
-        self.iterables = iterables
-
-    def __len__(self):
-        return min(map(len, self.iterables))
-
-    def __iter__(self):
-        return zip(*self.iterables)
+@contextmanager
+def zero_grad_and_step(opt):
+    opt.zero_grad(set_to_none=True)
+    yield
+    opt.step()
 
 
 def compute_nrow(images):
     b, _, h, w = images.size()
     nrow = math.ceil(math.sqrt(h * b / w))
-
     return nrow
 
 
@@ -96,10 +80,10 @@ def make_grid(images):
 
 
 def bin_loss(w, sigma=0.2):
-    c = 0.5 / math.sqrt(2 * math.pi * sigma**2)
+    c = 0.5 / math.sqrt(2 * math.pi * sigma ** 2)
 
-    left = torch.exp(-1 * (w + 1)**2 / (2 * sigma**2))
-    right = torch.exp(-1 * (w - 1)**2 / (2 * sigma**2))
+    left = torch.exp(-1 * (w + 1) ** 2 / (2 * sigma ** 2))
+    right = torch.exp(-1 * (w - 1) ** 2 / (2 * sigma ** 2))
 
     loss = -torch.log(c * left + c * right + 1e-8)
 
@@ -107,14 +91,24 @@ def bin_loss(w, sigma=0.2):
 
 
 def plot_decision_boundary(x, y, predict, colors=COLORS):
-    grid = np.stack(np.meshgrid(
-        np.linspace(x[:, 0].min() - 1., x[:, 0].max() + 1.),
-        np.linspace(x[:, 1].min() - 1., x[:, 1].max() + 1.),
-    ), -1)
+    grid = np.stack(
+        np.meshgrid(
+            np.linspace(x[:, 0].min() - 1.0, x[:, 0].max() + 1.0),
+            np.linspace(x[:, 1].min() - 1.0, x[:, 1].max() + 1.0),
+        ),
+        -1,
+    )
     z = predict(grid.reshape((-1, 2))).reshape(grid.shape[:2])
 
     fig = plt.figure()
-    plt.contourf(grid[:, :, 0], grid[:, :, 1], z, levels=np.arange(z.max() + 2) - 0.5, colors=colors, alpha=0.5)
+    plt.contourf(
+        grid[:, :, 0],
+        grid[:, :, 1],
+        z,
+        levels=np.arange(z.max() + 2) - 0.5,
+        colors=colors,
+        alpha=0.5,
+    )
     plt.scatter(x[y == 0][:, 0], x[y == 0][:, 1], s=5, c=colors[0])
     plt.scatter(x[y == 1][:, 0], x[y == 1][:, 1], s=5, c=colors[1])
 
@@ -129,12 +123,22 @@ def clip_grad_norm(grads, max_norm, norm_type=2):
     grads = list(filter(lambda grad: grad is not None, grads))
     max_norm = float(max_norm)
     norm_type = float(norm_type)
-    total_norm = torch.norm(torch.stack([torch.norm(grad.detach(), norm_type) for grad in grads]), norm_type)
+    total_norm = torch.norm(
+        torch.stack([torch.norm(grad.detach(), norm_type) for grad in grads]), norm_type
+    )
     clip_coef = max_norm / (total_norm + 1e-6)
     if clip_coef < 1:
         grads = [grad * clip_coef for grad in grads]
 
     return grads
+
+
+def clip_parameters(m: nn.Module, value: float):
+    if value <= 0:
+        raise ValueError(f"expected clip value {value} to be > 0")
+
+    for p in m.parameters():
+        p.data.clamp_(-value, value)
 
 
 def cross_entropy(input, target, dim=-1, eps=1e-8):
@@ -145,24 +149,21 @@ def entropy(input, dim=-1, eps=1e-8):
     return cross_entropy(input, input, dim=dim, eps=eps)
 
 
-def weighted_sum(left, right, a):
-    return a * left + (1 - a) * right
+def stack_images(images):
+    assert isinstance(images, list)
+    images = torch.stack(images, 1)
+    b, nrow, c, h, w = images.size()
+    images = images.view(b * nrow, c, h, w)
+
+    return images, nrow
 
 
-def random_seed(seed):
-    random_seed_python(seed)
+def validate_shape(input, shape):
+    if input.dim() != len(shape):
+        raise "Invalid shape {}, expected {}".format(input.size(), shape)
 
-    torch.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    # torch.cuda.manual_seed(seed)
-    # torch.cuda.manual_seed_all(seed)
-
-
-def random_seed_python(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-
-
-def worker_init_fn(_):
-    random_seed_python(torch.initial_seed() % 2**32)
+    for a, b in zip(input.size(), shape):
+        if b is None:
+            continue
+        if a != b:
+            raise "Invalid shape {}, expected {}".format(input.size(), shape)

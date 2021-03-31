@@ -8,15 +8,17 @@ import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
 from all_the_tools.meters import Concat, Mean
+from all_the_tools.torch.data import ChunkedDataLoader
+from all_the_tools.torch.utils import ModuleEMA
 from tqdm import tqdm
 
 from datasets.image_folder import ImageFolderDataset
 from gan.losses import BinaryCrossEntropyLoss, LogisticNSLoss, NonSatLogisticLoss, WassersteinLoss
-from metrics import plot_pr_curve, precision_recall_auc
+from misc.metrics import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from summary_writers.file_system import SummaryWriter
-from utils import ChunkedDataLoader, ModuleEMA, compute_nrow, zero_grad_and_step
+from utils import compute_nrow, zero_grad_and_step
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
