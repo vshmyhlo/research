@@ -20,15 +20,6 @@ def compute_nrow(images):
     return nrow
 
 
-async def islice_async(iterable, size):
-    i = 0
-    async for x in iterable:
-        yield x
-        i += 1
-        if i == size:
-            break
-
-
 def clip_parameters(m: nn.Module, value: float):
     if value <= 0:
         raise ValueError(f"expected clip value {value} to be > 0")
@@ -49,13 +40,6 @@ def stack_images(images):
     images = images.view(b * nrow, c, h, w)
 
     return images, nrow
-
-
-@contextmanager
-def measure(message):
-    t = time.time()
-    yield
-    print(message, f"{time.time() - t:.3f}")
 
 
 def validate_shape(input, shape):
