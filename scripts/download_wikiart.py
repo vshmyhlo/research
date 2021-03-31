@@ -88,8 +88,8 @@ async def main_async(genres):
     sem = asyncio.Semaphore(64)
     tasks = []
     for genre in genres:
-        tasks.append(asyncio.create_task(download_genre(genre, output_path, sem)))
-        # await download_genre(genre, output_path, sem)
+        # tasks.append(asyncio.create_task(download_genre(genre, output_path, sem)))
+        await download_genre(genre, output_path, sem)
     for task in tasks:
         await task
 
