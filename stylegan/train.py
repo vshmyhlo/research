@@ -18,12 +18,13 @@ from precision_recall import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from summary_writers.file_system import SummaryWriter
-from utils import compute_nrow, zero_grad_and_step
+from utils import compute_nrow, stack_images, zero_grad_and_step
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: visualize noise maps
 # TODO: test style-mixing code
 # TODO: review minibatch-std
 # TODO: check style mixing layer ordering
@@ -243,13 +244,18 @@ def main(config_path, **kwargs):
                     loss_r1 = r1_penalty * (config.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
+                    break
+
         dsc.eval()
         gen.eval()
         gen_ema.eval()
         with torch.no_grad():
-            fake = gen(noise_fixed)
-            fake_ema = gen_ema(noise_fixed)
-            real, fake, fake_ema = [denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema]]
+            fake = [gen(noise_fixed) for _ in range(8)]
+            fake_ema = [gen_ema(noise_fixed) for _ in range(8)]
+
+            real = denormalize(real).clamp(0, 1)
+            fake = [denormalize(x).clamp(0, 1) for x in fake]
+            fake_ema = [denormalize(x).clamp(0, 1) for x in fake_ema]
 
             dsc_logits = dsc_logits.compute_and_reset().data.cpu().numpy()
             dsc_targets = dsc_targets.compute_and_reset().data.cpu().numpy()
@@ -268,14 +274,16 @@ def main(config_path, **kwargs):
                 torchvision.utils.make_grid(real, nrow=compute_nrow(real)),
                 global_step=epoch,
             )
+            fake, nrow = stack_images(fake)
             writer.add_image(
                 "fake",
-                torchvision.utils.make_grid(fake, nrow=compute_nrow(fake)),
+                torchvision.utils.make_grid(fake, nrow=nrow),
                 global_step=epoch,
             )
+            fake_ema, nrow = stack_images(fake_ema)
             writer.add_image(
                 "fake_ema",
-                torchvision.utils.make_grid(fake_ema, nrow=compute_nrow(fake_ema)),
+                torchvision.utils.make_grid(fake_ema, nrow=nrow),
                 global_step=epoch,
             )
             torch.save(
