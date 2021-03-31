@@ -49,7 +49,8 @@ class Client:
             if res is None:
                 break
             print("fetched {}, page {}".format(genre, page))
-            for p in res["Paintings"]:
+            paintings = res.get("Paintings", []) or []
+            for p in paintings:
                 yield p
             page += 1
 
