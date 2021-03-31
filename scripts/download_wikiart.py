@@ -14,6 +14,7 @@ class Client:
 
     async def get_json(self, path: str):
         url = f"https://www.wikiart.org{path}"
+        print(url)
         async with self.sess.get(url) as res:
             if res.content_type != "application/json":
                 return None
@@ -45,7 +46,6 @@ class Client:
                 "/en/paintings-by-genre/{}".format(genre),
                 {"json": "2", "page": str(page)},
             )
-            print(path)
             res = await self.get_json(path)
             if res is None:
                 break
