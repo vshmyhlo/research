@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from multiprocessing import Pool
 
 import click
@@ -10,11 +11,12 @@ from tqdm import tqdm
 @click.command()
 @click.option("--input-path", type=click.Path(), required=True)
 @click.option("--output-path", type=click.Path(), required=True)
+@click.option("--max-size", type=click.INT, required=True)
 @click.option("--num-workers", type=click.INT, default=os.cpu_count())
-def main(input_path, output_path, num_workers):
+def main(input_path, output_path, max_size, num_workers):
     with Pool(num_workers) as pool:
         pool.starmap(
-            preprocess_image,
+            partial(preprocess_image, max_size=max_size),
             tqdm(
                 [
                     (os.path.join(input_path, image_path), os.path.join(output_path, image_path))
@@ -24,7 +26,7 @@ def main(input_path, output_path, num_workers):
         )
 
 
-def preprocess_image(input_path, output_path):
+def preprocess_image(input_path, output_path, max_size):
     if os.path.exists(output_path):
         print("skipping {}".format(input_path))
         return
@@ -43,8 +45,8 @@ def preprocess_image(input_path, output_path):
         image = image.convert("RGB")
         print("converting to RGB {}".format(input_path))
 
-    if min(image.size) > 512:
-        image = T.Resize(512)(image)
+    if min(image.size) > max_size:
+        image = T.Resize(max_size)(image)
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     image.save(output_path)
