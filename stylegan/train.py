@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from datasets.image_folder import ImageFolderDataset
 from gan.losses import BinaryCrossEntropyLoss, LogisticNSLoss, NonSatLogisticLoss, WassersteinLoss
-from misc.metrics import plot_pr_curve, precision_recall_auc
+from precision_recall import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from summary_writers.file_system import SummaryWriter
