@@ -91,7 +91,8 @@ async def main_async(genres):
 
         tasks = []
         for genre in genres:
-            tasks.append(asyncio.create_task(download_genre(genre, output_path, client, sem)))
+            # tasks.append(asyncio.create_task(download_genre(genre, output_path, client, sem)))
+            await download_genre(genre, output_path, client, sem)
         for task in tasks:
             await task
 
