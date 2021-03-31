@@ -140,7 +140,7 @@ def main(config_path, **kwargs):
     state = torch.load(os.path.join(config.experiment_path, "checkpoint.pth"))
     dsc.load_state_dict(state["dsc"])
     gen.load_state_dict(state["gen"])
-    gen_ema.load_state_dict(state["gen_ema"])
+    gen_ema.load_state_dict(state["gen"])
     opt_gen.load_state_dict(state["opt_gen"])
     opt_dsc.load_state_dict(state["opt_dsc"])
 
