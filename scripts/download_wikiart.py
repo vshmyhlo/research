@@ -75,7 +75,7 @@ class Client:
 
 
 @click.command()
-@click.option("--genre", type=click.STRING, multiple=True, required=True)
+@click.option("--genre", "-g", type=click.STRING, multiple=True, required=True)
 # @click.option("--access-key", type=click.STRING, required=True)
 # @click.option("--secret-key", type=click.STRING, required=True)
 def main(genre):
