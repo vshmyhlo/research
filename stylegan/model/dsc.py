@@ -6,6 +6,7 @@ from torch import nn as nn
 from stylegan.model.modules import Bias, Bias2d, Conv2d, LeakyReLU, Linear
 
 
+@torch.jit.script
 class Dsc(nn.Module):
     def __init__(self, image_size, base_channels, max_channels):
         super().__init__()
