@@ -140,12 +140,12 @@ def main(config_path, **kwargs):
 
     if os.path.exists(os.path.join(config.experiment_path, "checkpoint.pth")):
         state = torch.load(os.path.join(config.experiment_path, "checkpoint.pth"))
+        dsc.load_state_dict(state["dsc"])
+        gen.load_state_dict(state["gen"])
+        gen_ema.load_state_dict(state["gen_ema"])
+        opt_gen.load_state_dict(state["opt_gen"])
+        opt_dsc.load_state_dict(state["opt_dsc"])
         print("restored from checkpoint")
-    dsc.load_state_dict(state["dsc"])
-    gen.load_state_dict(state["gen"])
-    gen_ema.load_state_dict(state["gen_ema"])
-    opt_gen.load_state_dict(state["opt_gen"])
-    opt_dsc.load_state_dict(state["opt_dsc"])
 
     dataset = build_dataset(config)
     print("dataset size: {}".format(len(dataset)))
