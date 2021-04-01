@@ -138,7 +138,9 @@ def main(config_path, **kwargs):
     opt_gen = build_optimizer(gen.parameters(), config)
     opt_dsc = build_optimizer(dsc.parameters(), config)
 
-    state = torch.load(os.path.join(config.experiment_path, "checkpoint.pth"))
+    if os.path.exists(os.path.join(config.experiment_path, "checkpoint.pth")):
+        state = torch.load(os.path.join(config.experiment_path, "checkpoint.pth"))
+        print("restored from checkpoint")
     dsc.load_state_dict(state["dsc"])
     gen.load_state_dict(state["gen"])
     gen_ema.load_state_dict(state["gen_ema"])
