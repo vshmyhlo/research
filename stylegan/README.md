@@ -5,4 +5,4 @@ Trained on subset of paintings scraped from [WikiArt](https://www.wikiart.org/) 
 ![](data/stylegan.jpeg)
 
 ## TODO:
-[ ] path-length regularization
+- [ ] path-length regularization
