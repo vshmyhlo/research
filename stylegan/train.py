@@ -213,8 +213,8 @@ def main(config_path, **kwargs):
 
             # generator: regularize
             if batch_i % config.gen.reg_interval == 0:
-                with zero_grad_and_step(opt_gen):
-                    pass
+                # with zero_grad_and_step(opt_gen):
+                #     pass
 
             # generator: update moving average
             ema.update(gen)
