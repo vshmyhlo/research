@@ -24,6 +24,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: check number of channels in paper
+# TODO: check ema beta computation
 # TODO: visualize noise maps
 # TODO: test style-mixing code
 # TODO: review minibatch-std
@@ -58,6 +60,13 @@ torch.backends.cudnn.benchmark = True
 # TODO: downsampling stride
 # TODO: use truncation trick
 # TODO: upsample_conv, conv_downsample
+
+"""
+1We use 2× fewer feature maps, 2× larger minibatch, mixed-precision training for layers at ≥ 322
+,
+η = 0.0025, γ = 1, and exponential moving average half-life of 20k images for generator weights.
+"""
+
 
 """
 To avoid having to account for the
@@ -131,9 +140,10 @@ def main(config_path, **kwargs):
         image_size=config.image_size,
         base_channels=config.dsc.base_channels,
         max_channels=config.dsc.max_channels,
+        batch_std=config.dsc.batch_std,
     ).to(DEVICE)
     gen_ema = copy.deepcopy(gen)
-    ema = ModuleEMA(gen_ema, 0.998)
+    ema = ModuleEMA(gen_ema, config.gen.ema)
 
     opt_gen = build_optimizer(gen.parameters(), config)
     opt_dsc = build_optimizer(dsc.parameters(), config)

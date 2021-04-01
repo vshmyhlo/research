@@ -7,7 +7,7 @@ from stylegan.model.modules import Bias, Bias2d, Conv2d, LeakyReLU, Linear
 
 
 class Dsc(nn.Module):
-    def __init__(self, image_size, base_channels, max_channels):
+    def __init__(self, image_size, base_channels, max_channels, batch_std):
         super().__init__()
 
         self.from_rgb = FromRGB(base_channels)
@@ -23,7 +23,7 @@ class Dsc(nn.Module):
 
         blocks = [Block(in_channels, out_channels) for in_channels, out_channels in channels]
         self.blocks = nn.Sequential(*blocks)
-        self.output = Output(channels[-1][1], channels[-1][1])
+        self.output = Output(channels[-1][1], channels[-1][1], batch_std=batch_std)
 
     def forward(self, image):
         input = self.from_rgb(image)
@@ -72,10 +72,10 @@ class Block(nn.Module):
 
 
 class Output(nn.Module):
-    def __init__(self, in_channels, mid_channels):
+    def __init__(self, in_channels, mid_channels, batch_std):
         super().__init__()
 
-        self.batch_std = BatchSTD(group_size=4, num_channels=1)
+        self.batch_std = BatchSTD(group_size=batch_std, num_channels=1)
         self.conv = nn.Sequential(
             Conv2d(in_channels + 1, mid_channels, kernel_size=3, padding=1),
             Bias2d(mid_channels),

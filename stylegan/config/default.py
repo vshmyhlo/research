@@ -3,6 +3,7 @@ from all_the_tools.config import Config as C
 noise_size = 512
 
 config = C(
+    dataset="ffhq",
     num_epochs=10000,
     batches_in_epoch=256,
     batch_size=32,
@@ -22,10 +23,12 @@ config = C(
         base_channels=32,
         max_channels=noise_size,
         reg_interval=16,
+        batch_std=4,
     ),
     gen=C(
         loss="logns",
         base_channels=32,
         max_channels=noise_size,
+        ema=0.998,
     ),
 )
