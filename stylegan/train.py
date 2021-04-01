@@ -24,6 +24,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: GAN metrics: FID, IS, PR
 # TODO: check number of channels in paper
 # TODO: check ema beta computation
 # TODO: visualize noise maps
