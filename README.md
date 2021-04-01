@@ -7,3 +7,5 @@
 * [Tacotron2](./tacotron) 
 * [FCOS](./fcos)
 * [StyleGAN2](./stylegan) (PyTorch)
+* [RetinaNet](./https://github.com/v-shmyhlo/object_detection_pytorch) (PyTorch)
+* [Transformer (Attention Is All You Need)](./https://github.com/v-shmyhlo/transformer-pytorch) (PyTorch)
