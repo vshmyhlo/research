@@ -9,7 +9,7 @@ config = C(
     batch_size=64,
     image_size=128,
     noise_size=noise_size,
-    r1_gamma=1,
+    r1_gamma=10,
     opt=C(
         type="adam",
         args=C(
@@ -29,6 +29,7 @@ config = C(
         loss="logns",
         base_channels=32,
         max_channels=noise_size,
+        reg_interval=8,
         ema=0.999,
     ),
 )

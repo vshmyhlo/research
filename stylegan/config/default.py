@@ -29,6 +29,7 @@ config = C(
         loss="logns",
         base_channels=32,
         max_channels=noise_size,
+        reg_interval=8,
         ema=0.998,
     ),
 )
