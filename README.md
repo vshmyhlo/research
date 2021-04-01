@@ -6,3 +6,4 @@
 * [MixMatch](./mix_match) 
 * [Tacotron2](./tacotron) 
 * [FCOS](./fcos)
+* [StyleGAN2](./stylegan) (PyTorch)
