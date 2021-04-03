@@ -14,20 +14,18 @@ Text-to-Speech
 Machine Translation
 * [Transformer (Attention Is All You Need)](https://github.com/v-shmyhlo/transformer-pytorch) (PyTorch)
 
-GANs
+Generative Models
 * [StyleGAN2](./stylegan) (PyTorch)
+* [VAE](./vae) (PyTorch)
 
 Semi and Self-Supervised Learning
 * [SimSiam](./sim_siam)
-* [Meta Pseudo Labels](./mpl_tf) (TensorFlow, TwoMoonds dataset)
+* [Meta Pseudo Labels](./mpl_tf) (TensorFlow, TwoMoons dataset)
 * [Meta Pseudo Labels](./mpl_torch) (PyTorch, CIFAR-10 SSL)
 * [MixMatch](./mix_match) 
 
-Video Frame Rate Enchancement
+Video Frame Rate Enhancement
 * [Video Frame Interpolation via Residue Refinement (RRIN)](./rrin)
-
-Image Segmentation
-* [Semantic Segmentation](./segmentation)
 
 Image Classification
 * [Image Classification](./classification)
@@ -35,11 +33,18 @@ Image Classification
 * [ResNet, ResNeXt, DenseNet, MobileNetV2, FPN](https://github.com/v-shmyhlo/baselines)
 * [TODO](https://github.com/v-shmyhlo/segmentation-tensorflow)
 
+Image Segmentation
+* [Semantic Segmentation](./segmentation)
+
 Similarity and Metric Learning
 * [Similarity and Metric Learning](https://github.com/v-shmyhlo/similarity-learning)
 
 Reinforcement Learning
 * [Reinforcement Learning Algorithms](https://github.com/v-shmyhlo/reinforcement-learning)
+
+Computer Graphics
+* [Ray Tracing Python](./ray_tracing)
+* [Ray Tracing Rust](./ray_tracing_rust)
 
 Other stuff
 * [Implementation](https://github.com/v-shmyhlo/algorithms) of many common Algorithms and Data Structures

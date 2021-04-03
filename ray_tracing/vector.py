@@ -10,7 +10,7 @@ def normalize(v):
 
 
 def random_unit():
-    return normalize(vector(0, 0, 0).uniform_(-1., 1.))
+    return normalize(vector(0, 0, 0).uniform_(-1.0, 1.0))
 
 
 def reflect(v, n):

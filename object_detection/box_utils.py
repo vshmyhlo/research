@@ -96,10 +96,13 @@ def boxes_clip(boxes, hw):
 def boxes_to_offsets(boxes, points):
     tl, br = boxes_to_tl_br(boxes)
 
-    offsets = torch.cat([
-        points - tl,
-        br - points,
-    ], -1)
+    offsets = torch.cat(
+        [
+            points - tl,
+            br - points,
+        ],
+        -1,
+    )
 
     return offsets
 
@@ -107,10 +110,13 @@ def boxes_to_offsets(boxes, points):
 def offsets_to_boxes(offsets, points):
     tl, br = boxes_to_tl_br(offsets)
 
-    boxes = torch.cat([
-        points - tl,
-        points + br,
-    ], -1)
+    boxes = torch.cat(
+        [
+            points - tl,
+            points + br,
+        ],
+        -1,
+    )
 
     return boxes
 

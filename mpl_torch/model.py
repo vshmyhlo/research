@@ -7,10 +7,8 @@ class Model(nn.Module):
         super().__init__()
 
         self.net = torchvision.models.resnet18(num_classes=num_classes, pretrained=False)
-        self.net.fc = nn.Sequential(
-            nn.Dropout(dropout),
-            self.net.fc)
-       
+        self.net.fc = nn.Sequential(nn.Dropout(dropout), self.net.fc)
+
     def forward(self, input):
         input = self.net(input)
         input = input.softmax(-1)

@@ -10,17 +10,17 @@ from PIL.ImageDraw import Draw
 class LoadImage(object):
     def __init__(self, transform):
         self.transform = transform
-        self.cache_path = './cache-mela-images/{}'.format(self.transform)
+        self.cache_path = "./cache-mela-images/{}".format(self.transform)
 
         os.makedirs(self.cache_path, exist_ok=True)
 
     def __call__(self, input):
-        cache_path = os.path.join(self.cache_path, '{}.png'.format(input['id']))
+        cache_path = os.path.join(self.cache_path, "{}.png".format(input["id"]))
 
         if not os.path.exists(cache_path):
             # dicom = pydicom.dcmread(input['image'])
             # image = Image.fromarray(dicom.pixel_array)
-            image = Image.open(input['image'])
+            image = Image.open(input["image"])
             image = self.transform(image)
             image.save(cache_path)
             del image
@@ -29,7 +29,7 @@ class LoadImage(object):
 
         input = {
             **input,
-            'image': image,
+            "image": image,
         }
 
         return input
@@ -52,7 +52,7 @@ class RandomResizedCrop(object):
     def __call__(self, input):
         p = np.random.uniform(np.log2(self.scale[0]), np.log2(self.scale[1]))
 
-        crop_size = round(self.size * 2**p)
+        crop_size = round(self.size * 2 ** p)
 
         input = T.RandomCrop(crop_size)(input)
         input = T.Resize(self.size)(input)
@@ -94,7 +94,7 @@ class CircleMask(object):
         lt = tuple((s - diam) // 2 for s in input.size)
         rb = tuple(x + diam for x in lt)
 
-        mask = Image.new('1', input.size)
+        mask = Image.new("1", input.size)
         Draw(mask).ellipse((lt, rb), fill=True)
         fill = Image.new(input.mode, input.size, color=self.color)
         input = Image.composite(input, fill, mask)

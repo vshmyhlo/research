@@ -8,10 +8,12 @@ from PIL import Image
 
 class ADE20KDataset(torch.utils.data.Dataset):
     def __init__(self, path, subset, transform=None):
-        self.data = pd.DataFrame({
-            'image': sorted(glob.glob(os.path.join(path, 'images', subset, '*.jpg'))),
-            'mask': sorted(glob.glob(os.path.join(path, 'annotations', subset, '*.png'))),
-        })
+        self.data = pd.DataFrame(
+            {
+                "image": sorted(glob.glob(os.path.join(path, "images", subset, "*.jpg"))),
+                "mask": sorted(glob.glob(os.path.join(path, "annotations", subset, "*.png"))),
+            }
+        )
         self.data.index = range(len(self.data))
         self.transform = transform
 
@@ -22,8 +24,8 @@ class ADE20KDataset(torch.utils.data.Dataset):
         row = self.data.loc[i]
 
         input = {
-            'image': Image.open(row['image']).convert('RGB'),
-            'mask': Image.open(row['mask']),
+            "image": Image.open(row["image"]).convert("RGB"),
+            "mask": Image.open(row["mask"]),
         }
 
         if self.transform is not None:

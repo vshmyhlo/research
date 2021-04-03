@@ -7,10 +7,10 @@ from tqdm import tqdm
 
 from ray_tracing.light import Light
 from ray_tracing.material import Metal
-from ray_tracing.objects import Sphere, Object
+from ray_tracing.objects import Object, Sphere
 from ray_tracing.ray import Ray
 from ray_tracing.scene import Scene
-from ray_tracing.vector import vector, normalize
+from ray_tracing.vector import normalize, vector
 
 
 def build_view(size):
@@ -39,10 +39,7 @@ def main():
     lights = [
         Light(vector(1.5, -0.5, -10), vector(1, 1, 1)),
     ]
-    scene = Scene(
-        camera=camera,
-        objects=objects,
-        lights=lights)
+    scene = Scene(camera=camera, objects=objects, lights=lights)
 
     view = build_view(size)
     image = torch.zeros(3, *size, dtype=torch.float)
@@ -52,7 +49,7 @@ def main():
         image[:, i, j] = ray_trace(ray, scene)
 
     image = to_pil_image(image)
-    image.save('./ray_tracing/output.png')
+    image.save("./ray_tracing/output.png")
     plt.imshow(image)
     plt.show()
 
@@ -92,19 +89,23 @@ def color_at(object: Object, position, normal, scene: Scene):
 
     for light in scene.lights:
         to_light = Ray(position, light.position - position)
-        color += object.material.color * \
-                 object.material.diffuse * \
-                 max(torch.dot(normal, to_light.direction), 0)
+        color += (
+            object.material.color
+            * object.material.diffuse
+            * max(torch.dot(normal, to_light.direction), 0)
+        )
 
         half_vector = normalize(to_light.direction + to_cam)
-        color += light.color * \
-                 object.material.specular * \
-                 max(torch.dot(normal, half_vector), 0)**specular_k
+        color += (
+            light.color
+            * object.material.specular
+            * max(torch.dot(normal, half_vector), 0) ** specular_k
+        )
 
     color = color.clamp(0, 1)
 
     return color
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ def build_default_config():
     config = CN()
 
     config.seed = 42
-    config.dataset = 'coco'
+    config.dataset = "coco"
     config.epochs = 100
     config.train_batch_size = 32
     config.eval_batch_size = 32
@@ -14,7 +14,7 @@ def build_default_config():
     config.train_steps = 1000
 
     config.model = CN()
-    config.model.backbone = 'resnet50'
+    config.model.backbone = "resnet50"
 
     config.anchors = CN()
     config.anchors.min_iou = 0.4
@@ -41,11 +41,11 @@ def build_default_config():
     ]
 
     config.loss = CN()
-    config.loss.classification = 'focal'
-    config.loss.localization = 'smooth_l1'
+    config.loss.classification = "focal"
+    config.loss.localization = "smooth_l1"
 
     config.opt = CN()
-    config.opt.type = 'sgd'
+    config.opt.type = "sgd"
     config.opt.learning_rate = 0.01
     config.opt.weight_decay = 1e-4
     config.opt.acc_steps = 1
@@ -54,6 +54,6 @@ def build_default_config():
     config.opt.sgd.momentum = 0.9
 
     config.sched = CN()
-    config.sched.type = 'cosine'
+    config.sched.type = "cosine"
 
     return config

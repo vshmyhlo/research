@@ -3,42 +3,42 @@ from collections import OrderedDict
 import numpy as np
 from torch import nn as nn
 
-from gan.modules import ConvEq, ReLU, Upsample, NoOp
+from gan.modules import ConvEq, NoOp, ReLU, Upsample
 
 
 class Discriminator(nn.Module):
     def __init__(self, image_size):
         def build_level_layers(level, base_channels=16):
-            in_channels = base_channels * 2**(max_pow - level - 1)
-            out_channels = base_channels * 2**(max_pow - level)
+            in_channels = base_channels * 2 ** (max_pow - level - 1)
+            out_channels = base_channels * 2 ** (max_pow - level)
 
             if level == 0:
-                conv = nn.Sequential(
-                    MidBlock(in_channels, in_channels),
-                    ZeroBlock(in_channels))
+                conv = nn.Sequential(MidBlock(in_channels, in_channels), ZeroBlock(in_channels))
             else:
                 conv = nn.Sequential(
                     MidBlock(in_channels, in_channels),
-                    MidBlock(in_channels, out_channels, downsample=True))
+                    MidBlock(in_channels, out_channels, downsample=True),
+                )
 
-            from_rgb = nn.Sequential(
-                ConvEq(3, in_channels, 1),
-                ReLU())
+            from_rgb = nn.Sequential(ConvEq(3, in_channels, 1), ReLU())
 
-            return nn.ModuleDict(OrderedDict({
-                'conv': conv,
-                'from_rgb': from_rgb,
-            }))
+            return nn.ModuleDict(
+                OrderedDict(
+                    {
+                        "conv": conv,
+                        "from_rgb": from_rgb,
+                    }
+                )
+            )
 
         super().__init__()
 
         self.downsample = Upsample(scale_factor=0.5)
         max_pow = np.log2(image_size - 1).astype(np.int32)
         levels = np.arange(max_pow)
-        self.blocks = nn.ModuleDict(OrderedDict({
-            str(level): build_level_layers(level)
-            for level in levels
-        }))
+        self.blocks = nn.ModuleDict(
+            OrderedDict({str(level): build_level_layers(level) for level in levels})
+        )
 
     def forward(self, input, level, a):
         right = self.blocks[str(level)].conv(self.blocks[str(level)].from_rgb(input))
@@ -58,8 +58,7 @@ class Discriminator(nn.Module):
 
 class ZeroBlock(nn.Sequential):
     def __init__(self, in_channels):
-        super().__init__(
-            ConvEq(in_channels, 1, 4))
+        super().__init__(ConvEq(in_channels, 1, 4))
 
 
 class MidBlock(nn.Sequential):
@@ -67,4 +66,5 @@ class MidBlock(nn.Sequential):
         super().__init__(
             ConvEq(in_channels, out_channels, 3, padding=1),
             ReLU(),
-            Upsample(scale_factor=0.5) if downsample else NoOp())
+            Upsample(scale_factor=0.5) if downsample else NoOp(),
+        )

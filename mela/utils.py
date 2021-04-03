@@ -10,13 +10,13 @@ def drop(input):
 
     p = input.mean(0)
     p = standartize(p)
-    p = p**2
+    p = p ** 2
     p = standartize(p)
 
     p = p.view(1, 1, h, w)
-    p = F.upsample(p, scale_factor=1 / 32, mode='bilinear')
+    p = F.upsample(p, scale_factor=1 / 32, mode="bilinear")
     m = (torch.rand_like(p) > p / 8).float()
-    m = F.upsample(m, scale_factor=32, mode='nearest')
+    m = F.upsample(m, scale_factor=32, mode="nearest")
     m = m.view(1, h, w)
 
     input *= m

@@ -11,8 +11,8 @@ class Spectrogram(Invertible):
     def __init__(self, sample_rate, num_mels, mean_std):
         super().__init__()
 
-        num_fft = round(50. / 1000 * sample_rate)
-        win_length = round(50. / 1000 * sample_rate)
+        num_fft = round(50.0 / 1000 * sample_rate)
+        win_length = round(50.0 / 1000 * sample_rate)
         hop_length = round(12.5 / 1000 * sample_rate)
 
         self.stft = STFT(num_fft, win_length, hop_length)
@@ -48,10 +48,11 @@ class STFT(Invertible):
             n_fft=self.num_fft,
             hop_length=self.hop_length,
             win_length=self.win_length,
-            window=torch.hann_window(self.win_length, device=input.device))
+            window=torch.hann_window(self.win_length, device=input.device),
+        )
 
         real, imag = torch.unbind(input, dim=-1)
-        input = torch.sqrt(real**2 + imag**2)
+        input = torch.sqrt(real ** 2 + imag ** 2)
         phase = torch.atan2(imag, real)
 
         return input, phase
@@ -64,7 +65,8 @@ class STFT(Invertible):
             n_fft=self.num_fft,
             hop_length=self.hop_length,
             win_length=self.win_length,
-            window=torch.hann_window(self.win_length, device=input.device))
+            window=torch.hann_window(self.win_length, device=input.device),
+        )
 
         return input
 
@@ -73,10 +75,12 @@ class LogMel(Invertible):
     def __init__(self, sample_rate, num_fft, num_mels):
         super().__init__()
 
-        filters = torch.tensor(librosa.filters.mel(sample_rate, n_fft=num_fft, n_mels=num_mels), dtype=torch.float)
+        filters = torch.tensor(
+            librosa.filters.mel(sample_rate, n_fft=num_fft, n_mels=num_mels), dtype=torch.float
+        )
         self.filters = nn.Parameter(filters, requires_grad=False)
         self.inv_filters = nn.Parameter(torch.pinverse(filters), requires_grad=False)
-        self.c = 1.
+        self.c = 1.0
 
     def f(self, input):
         input = F.conv1d(input, self.filters.unsqueeze(-1))
@@ -97,8 +101,8 @@ class Normalization(Invertible):
         super().__init__()
 
         self.mean, self.std = [
-            nn.Parameter(x.view(1, x.size(0), 1), requires_grad=False)
-            for x in mean_std]
+            nn.Parameter(x.view(1, x.size(0), 1), requires_grad=False) for x in mean_std
+        ]
 
     def f(self, input):
         input = (input - self.mean) / self.std

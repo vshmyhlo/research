@@ -8,4 +8,3 @@ class XUDataLoader(object):
     def __iter__(self):
         for (x_images, x_targets), (u_images, _) in zip(*self.data_loaders):
             yield (x_images, x_targets), (u_images,)
-          

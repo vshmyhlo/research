@@ -10,13 +10,23 @@ def pad_and_pack(tensors):
     sizes = [t.size(0) for t in tensors]
 
     tensor = torch.zeros(
-        len(sizes), max(sizes), dtype=tensors[0].dtype, layout=tensors[0].layout, device=tensors[0].device)
+        len(sizes),
+        max(sizes),
+        dtype=tensors[0].dtype,
+        layout=tensors[0].layout,
+        device=tensors[0].device,
+    )
     mask = torch.zeros(
-        len(sizes), max(sizes), dtype=torch.bool, layout=tensors[0].layout, device=tensors[0].device)
+        len(sizes),
+        max(sizes),
+        dtype=torch.bool,
+        layout=tensors[0].layout,
+        device=tensors[0].device,
+    )
 
     for i, t in enumerate(tensors):
-        tensor[i, :t.size(0)] = t
-        mask[i, :t.size(0)] = True
+        tensor[i, : t.size(0)] = t
+        mask[i, : t.size(0)] = True
 
     return tensor, mask
 
@@ -35,13 +45,13 @@ def compute_sample_sizes(dataset):
     data = []
     for i in tqdm(range(len(dataset))):
         t, a = dataset[i]
-        data.append({'t': t.size(0), 'a': a.size(0)})
+        data.append({"t": t.size(0), "a": a.size(0)})
     data = pd.DataFrame(data)
 
-    data['r'] = data['a'] / data['t']
-    data['size'] = (data['t'] * data['r'].mean() + data['a']) / 2
+    data["r"] = data["a"] / data["t"]
+    data["size"] = (data["t"] * data["r"].mean() + data["a"]) / 2
 
-    return data['size']
+    return data["size"]
 
 
 # TODO:
@@ -52,7 +62,7 @@ def griffin_lim(spectra, module, n_iters=30):
     angles = np.angle(np.exp(2j * np.pi * np.random.rand(*spectra.size())))
     angles = torch.tensor(angles, dtype=torch.float, device=spectra.device)
     audio = module.stft(spectra, angles, inverse=True).squeeze(1)
-  
+
     for i in range(n_iters):
         _, angles = module.stft(audio)
         audio = module.stft(spectra, angles, inverse=True).squeeze(1)
@@ -65,7 +75,7 @@ def downsample_mask(input, size):
     assert input.dtype == torch.bool
 
     input = input.unsqueeze(1).float()
-    input = F.interpolate(input, size=size, mode='nearest')
+    input = F.interpolate(input, size=size, mode="nearest")
     input = input.squeeze(1).bool()
 
     return input
@@ -82,10 +92,10 @@ def soft_diag(h, w):
     j = np.arange(w)
     i = r(j.astype(np.float) / w * h)
     x = np.zeros((h, w))
-    x[i, j] = 1.
+    x[i, j] = 1.0
 
-    x = gaussian_filter(x, h / 20, mode='constant')
+    x = gaussian_filter(x, h / 20, mode="constant")
     x = (x - x.min()) / (x.max() - x.min())
-    x = x * 2. - 1.
+    x = x * 2.0 - 1.0
 
     return x

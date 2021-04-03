@@ -1,5 +1,4 @@
 import cv2
-
 import numpy as np
 
 #
@@ -26,12 +25,15 @@ import numpy as np
 # # print(cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX))
 #
 #
-rgb = np.array([
-    [255, 0, 0],
-    [255, 255, 255],
-    [0, 0, 0],
-    [0, 0, 0],
-], dtype=np.uint8)
+rgb = np.array(
+    [
+        [255, 0, 0],
+        [255, 255, 255],
+        [0, 0, 0],
+        [0, 0, 0],
+    ],
+    dtype=np.uint8,
+)
 
 hsv = cv2.cvtColor(rgb.reshape((2, 2, 3)), cv2.COLOR_RGB2HSV).reshape((4, 3))
 print(hsv)
@@ -39,7 +41,6 @@ print(hsv)
 import numpy as np
 import torch
 from PIL import Image
-
 from rrin2.train import flow_to_rgb
 
 y, x = torch.meshgrid(torch.linspace(-1, 1, 128), torch.linspace(-1, 1, 128))
@@ -51,4 +52,4 @@ image = image.permute(1, 2, 0).data.cpu().numpy()
 image = (image * 255).astype(np.uint8)
 
 print(image.shape, image.dtype, image.min(), image.max())
-Image.fromarray(image).save('flow.png')
+Image.fromarray(image).save("flow.png")

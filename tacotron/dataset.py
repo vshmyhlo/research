@@ -9,7 +9,9 @@ class LJ(torch.utils.data.Dataset):
     def __init__(self, path, subset, transform):
         metadata = load_metadata(path)
         subsets = {}
-        subsets['train'], subsets['test'] = train_test_split(metadata, test_size=0.1, random_state=42)
+        subsets["train"], subsets["test"] = train_test_split(
+            metadata, test_size=0.1, random_state=42
+        )
 
         self.metadata = subsets[subset].reset_index(drop=True)
         self.transform = transform
@@ -21,9 +23,9 @@ class LJ(torch.utils.data.Dataset):
         sample = self.metadata.loc[i]
 
         input = {
-            'id': sample['id'],
-            'text': sample['text_norm'],
-            'audio': sample['wav_path'],
+            "id": sample["id"],
+            "text": sample["text_norm"],
+            "audio": sample["wav_path"],
         }
 
         if self.transform is not None:
@@ -33,10 +35,14 @@ class LJ(torch.utils.data.Dataset):
 
 
 def load_metadata(path):
-    metadata = pd.read_csv(os.path.join(path, 'metadata.csv'), sep='|', names=['id', 'text', 'text_norm'])
-    metadata['wav_path'] = metadata['id'].apply(lambda id: os.path.join(path, 'wavs', '{}.wav'.format(id)))
+    metadata = pd.read_csv(
+        os.path.join(path, "metadata.csv"), sep="|", names=["id", "text", "text_norm"]
+    )
+    metadata["wav_path"] = metadata["id"].apply(
+        lambda id: os.path.join(path, "wavs", "{}.wav".format(id))
+    )
     # FIXME:
-    for field in ['text', 'text_norm']:
+    for field in ["text", "text_norm"]:
         metadata = metadata[~metadata[field].isna()]
 
     return metadata

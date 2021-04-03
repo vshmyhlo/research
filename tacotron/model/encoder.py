@@ -27,7 +27,9 @@ class Encoder(nn.Module):
 
         input = torch.nn.utils.rnn.pack_padded_sequence(input, input_mask.sum(1), batch_first=True)
         input, _ = self.rnn(input)
-        input, _ = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=True, padding_value=0.)
+        input, _ = torch.nn.utils.rnn.pad_packed_sequence(
+            input, batch_first=True, padding_value=0.0
+        )
 
         return input
 
@@ -36,7 +38,7 @@ class EncoderConv(nn.Sequential):
     def __init__(self, features):
         blocks = []
         for _ in range(3):
-            blocks.append(ConvNorm1d(features, features, 5, padding=2, init='relu'))
+            blocks.append(ConvNorm1d(features, features, 5, padding=2, init="relu"))
             blocks.append(nn.ReLU(inplace=True))
             blocks.append(nn.Dropout(0.5))
 

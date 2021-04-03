@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fcos.model.fpn import FPN
-from fcos.model.modules import ReLU, ConvNorm, Conv, Scale
+from fcos.model.modules import Conv, ConvNorm, ReLU, Scale
 from fcos.utils import flatten_detection_map
 from init import Normal, prior_
 from object_detection.model.backbone import ResNet50
@@ -20,7 +20,8 @@ class HeadSubnet(nn.Sequential):
             ReLU(),
             ConvNorm(in_channels, in_channels, 3, padding=1, init=Normal(0, 0.01)),
             ReLU(),
-            Conv(in_channels, out_channels, 3, padding=1, init=Normal(0, 0.01)))
+            Conv(in_channels, out_channels, 3, padding=1, init=Normal(0, 0.01)),
+        )
 
 
 class FCOS(nn.Module):
@@ -28,10 +29,10 @@ class FCOS(nn.Module):
 
         super().__init__()
 
-        if model.backbone == 'resnet50':
+        if model.backbone == "resnet50":
             self.backbone = ResNet50()
         else:
-            raise AssertionError('invalid model.backbone'.format(model.backbone))
+            raise AssertionError("invalid model.backbone".format(model.backbone))
 
         self.fpn = FPN(self.backbone.featuremap_depths)
         self.class_head = HeadSubnet(256, num_classes)

@@ -3,45 +3,55 @@ from collections import OrderedDict
 import numpy as np
 from torch import nn as nn
 
-from gan.modules import ConvTransposeEq, AdditiveNoise, ReLU, AdaptiveInstanceNorm, Upsample, NoOp, ConvEq, PixelNorm
+from gan.modules import (
+    AdaptiveInstanceNorm,
+    AdditiveNoise,
+    ConvEq,
+    ConvTransposeEq,
+    NoOp,
+    PixelNorm,
+    ReLU,
+    Upsample,
+)
 
 
 class Generator(nn.Module):
     def __init__(self, image_size, latent_size):
         def build_level_layers(level, base_channels=16):
-            in_channels = base_channels * 2**(max_level - level)
-            out_channels = base_channels * 2**(max_level - level - 1)
+            in_channels = base_channels * 2 ** (max_level - level)
+            out_channels = base_channels * 2 ** (max_level - level - 1)
 
             if level == 0:
                 conv = SeqBlock(
                     ZeroBlock(latent_size, out_channels, latent_size),
-                    MidBlock(out_channels, out_channels, latent_size))
+                    MidBlock(out_channels, out_channels, latent_size),
+                )
             else:
                 conv = SeqBlock(
                     MidBlock(in_channels, out_channels, latent_size, upsample=True),
-                    MidBlock(out_channels, out_channels, latent_size))
+                    MidBlock(out_channels, out_channels, latent_size),
+                )
 
-            to_rgb = nn.Sequential(
-                ConvEq(out_channels, 3, 1),
-                nn.Tanh())
+            to_rgb = nn.Sequential(ConvEq(out_channels, 3, 1), nn.Tanh())
 
-            return nn.ModuleDict(OrderedDict({
-                'conv': conv,
-                'to_rgb': to_rgb,
-            }))
+            return nn.ModuleDict(
+                OrderedDict(
+                    {
+                        "conv": conv,
+                        "to_rgb": to_rgb,
+                    }
+                )
+            )
 
         super().__init__()
 
-        self.mapping = nn.Sequential(
-            PixelNorm(),
-            Mapping(latent_size))
+        self.mapping = nn.Sequential(PixelNorm(), Mapping(latent_size))
         self.upsample = Upsample(scale_factor=2)
         max_level = np.log2(image_size - 1).astype(np.int32)
         levels = np.arange(max_level)
-        self.blocks = nn.ModuleDict(OrderedDict({
-            str(level): build_level_layers(level)
-            for level in levels
-        }))
+        self.blocks = nn.ModuleDict(
+            OrderedDict({str(level): build_level_layers(level) for level in levels})
+        )
 
     def forward(self, input, level, a):
         input = input.view(input.size(0), input.size(1), 1, 1)
@@ -71,8 +81,9 @@ class Mapping(nn.Sequential):
             ConvEq(latent_size, latent_size, 1, scale=0.1),
             ReLU(),
             ConvEq(latent_size, latent_size, 1, scale=0.1),
-            ReLU())
-       
+            ReLU(),
+        )
+
 
 class SeqBlock(nn.ModuleList):
     def __init__(self, *blocks):

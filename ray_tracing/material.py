@@ -1,6 +1,5 @@
 from ray_tracing.ray import Ray
-
-from ray_tracing.vector import random_unit, reflect, random_in_hemisphere, vector
+from ray_tracing.vector import random_in_hemisphere, random_unit, reflect, vector
 
 
 class Material(object):
@@ -29,17 +28,17 @@ class Metal(Material):
 
 
 class Diffuse(Material):
-    def __init__(self, color, mode='hemi'):
+    def __init__(self, color, mode="hemi"):
         self.color = color
         self.mode = mode
 
     def reflect(self, ray, t, normal):
-        if self.mode == 'sphere':
+        if self.mode == "sphere":
             return self.reflect_sphere(ray, t, normal)
-        elif self.mode == 'hemi':
+        elif self.mode == "hemi":
             return self.reflect_hemi(ray, t, normal)
         else:
-            raise ValueError('invalid mode {}'.format(self.mode))
+            raise ValueError("invalid mode {}".format(self.mode))
 
     def reflect_sphere(self, ray, t, normal):
         ray = Ray(ray.position_at(t), normal + random_unit())

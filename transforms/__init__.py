@@ -7,10 +7,7 @@ class ApplyTo(object):
         self.transform = transform
 
     def __call__(self, input):
-        input = {
-            **input,
-            self.key: self.transform(input[self.key])
-        }
+        input = {**input, self.key: self.transform(input[self.key])}
 
         return input
 
@@ -48,7 +45,7 @@ class Resettable(object):
         self.transform = None
 
     def __call__(self, input):
-        assert self.transform is not None, 'transform is not initialized'
+        assert self.transform is not None, "transform is not initialized"
 
         return self.transform(input)
 

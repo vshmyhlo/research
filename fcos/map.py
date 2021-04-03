@@ -7,7 +7,6 @@ import torch.nn.functional as F
 
 from object_detection.box_utils import boxes_pairwise_iou
 
-
 # TODO: refactor
 
 
@@ -24,12 +23,14 @@ def build_sample_matches(boxes_true, boxes_pred, scores_pred, iou_threshold):
             v, j = ious[i].max(0)
             if v > iou_threshold:
                 match[i] = True
-                ious[:, j] = 0.
+                ious[:, j] = 0.0
 
-    sample_matches = pd.DataFrame({
-        'score': scores_pred.data.cpu().numpy(),
-        'match': match.data.cpu().numpy(),
-    })
+    sample_matches = pd.DataFrame(
+        {
+            "score": scores_pred.data.cpu().numpy(),
+            "match": match.data.cpu().numpy(),
+        }
+    )
 
     return sample_matches, boxes_true.size(0)
 
@@ -45,18 +46,21 @@ def build_per_class_sample_matches(true, pred, iou_threshold):
             true.boxes[true.class_ids == class_id],
             pred.boxes[pred.class_ids == class_id],
             pred.scores[pred.class_ids == class_id],
-            iou_threshold=iou_threshold)
-        sample_matches['class_id'] = class_id.item()
+            iou_threshold=iou_threshold,
+        )
+        sample_matches["class_id"] = class_id.item()
         per_class_matches.append(sample_matches)
 
     if len(per_class_matches) > 0:
         per_class_matches = pd.concat(per_class_matches)
     else:
-        per_class_matches = pd.DataFrame({
-            'score': np.zeros([0], dtype=np.float),
-            'match': np.zeros([0], dtype=np.bool),
-            'class_id': np.zeros([0], dtype=np.int64)
-        })
+        per_class_matches = pd.DataFrame(
+            {
+                "score": np.zeros([0], dtype=np.float),
+                "match": np.zeros([0], dtype=np.bool),
+                "class_id": np.zeros([0], dtype=np.int64),
+            }
+        )
         assert per_class_matches.empty
 
     return per_class_matches, per_class_num_true
@@ -67,15 +71,16 @@ def per_class_precision_recall(batch_true, batch_pred, iou_threshold):
 
     sample_results = [
         build_per_class_sample_matches(true, pred, iou_threshold=iou_threshold)
-        for true, pred in zip(batch_true, batch_pred)]
+        for true, pred in zip(batch_true, batch_pred)
+    ]
 
     per_class_matches, per_class_num_true = zip(*sample_results)
-    per_class_matches = pd.concat(per_class_matches).sort_values('score', ascending=False)
-    per_class_num_true = reduce(lambda a, b: a.add(b, fill_value=0.), per_class_num_true)
+    per_class_matches = pd.concat(per_class_matches).sort_values("score", ascending=False)
+    per_class_num_true = reduce(lambda a, b: a.add(b, fill_value=0.0), per_class_num_true)
 
     pr = {}
-    for class_id, group in per_class_matches.groupby('class_id'):
-        match = torch.tensor(group['match'].values)
+    for class_id, group in per_class_matches.groupby("class_id"):
+        match = torch.tensor(group["match"].values)
         pr[class_id] = match_to_precision_recall(match, per_class_num_true.loc[class_id])
 
     return pr
@@ -91,7 +96,7 @@ def per_class_precision_recall_to_map(pr):
 def pr_auc(pr):
     pr = F.pad(pr, (0, 0, 2, 2))
     pr[[1, -2], 1] = pr[[2, -3], 1]
-    pr[-1, 1] = 1.
+    pr[-1, 1] = 1.0
 
     pr = pr.data.cpu().numpy()
     auc = np.trapz(pr[:, 0], pr[:, 1])
@@ -107,8 +112,8 @@ def match_to_precision_recall(match, num_true):
     return torch.stack([precision, recall], 1)
 
 
-if __name__ == '__main__':
-    true, pred = torch.load('./tmp.pth', map_location='cpu')
+if __name__ == "__main__":
+    true, pred = torch.load("./randaugment.pth", map_location="cpu")
     true = [t[:2] for t in true]
     pr = per_class_precision_recall(true, pred, 0.5)
     print(per_class_precision_recall_to_map(pr))

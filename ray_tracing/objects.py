@@ -50,9 +50,9 @@ class Sphere(Object):
 
         a = torch.dot(ray.direction, ray.direction)
         b = 2 * torch.dot(ray.direction, sr)
-        c = torch.dot(sr, sr) - self.radius**2
+        c = torch.dot(sr, sr) - self.radius ** 2
 
-        disc = b**2 - 4 * a * c
+        disc = b ** 2 - 4 * a * c
         if disc < 0:
             return None
 

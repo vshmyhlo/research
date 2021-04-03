@@ -11,10 +11,10 @@ from tqdm import tqdm
 
 import utils
 from ray_tracing.camera import Camera
-from ray_tracing.material import Metal, Diffuse, Light
-from ray_tracing.objects import Sphere, ObjectList
+from ray_tracing.material import Diffuse, Light, Metal
+from ray_tracing.objects import ObjectList, Sphere
 from ray_tracing.ray import Ray
-from ray_tracing.vector import vector, normalize
+from ray_tracing.vector import normalize, vector
 
 
 def randomize_objects():
@@ -110,9 +110,7 @@ def ray_trace(ray: Ray, objects: ObjectList, max_steps):
     if reflection is None:
         return emitted
 
-    return emitted + reflection.attenuation * ray_trace(
-        reflection.ray, objects, max_steps - 1
-    )
+    return emitted + reflection.attenuation * ray_trace(reflection.ray, objects, max_steps - 1)
 
 
 if __name__ == "__main__":

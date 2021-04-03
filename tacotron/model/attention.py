@@ -1,6 +1,6 @@
 from torch import nn as nn
 
-from tacotron.model.modules import Linear, Conv1d
+from tacotron.model.modules import Conv1d, Linear
 from tacotron.utils import transpose_t_c
 
 
@@ -8,13 +8,11 @@ class Attention(nn.Module):
     def __init__(self, query_features, key_features, mid_features):
         super().__init__()
 
-        self.query = Linear(query_features, mid_features, bias=False, init='tanh')
-        self.key = Linear(key_features, mid_features, bias=False, init='tanh')
-        self.weight = LocationLayer(out_features=mid_features, bias=False, init='tanh')
+        self.query = Linear(query_features, mid_features, bias=False, init="tanh")
+        self.key = Linear(key_features, mid_features, bias=False, init="tanh")
+        self.weight = LocationLayer(out_features=mid_features, bias=False, init="tanh")
 
-        self.scores = nn.Sequential(
-            nn.Tanh(),
-            Linear(mid_features, 1))
+        self.scores = nn.Sequential(nn.Tanh(), Linear(mid_features, 1))
 
     def forward(self, query, key, value, mask, weight):
         query = self.query(query.unsqueeze(1))
@@ -22,7 +20,7 @@ class Attention(nn.Module):
         weight = self.weight(weight)
 
         scores = self.scores(query + key + weight)
-        scores = scores.masked_fill_(~mask.unsqueeze(-1), float('-inf'))
+        scores = scores.masked_fill_(~mask.unsqueeze(-1), float("-inf"))
         weight = scores.softmax(1)
 
         context = (weight * value).sum(1)
@@ -31,7 +29,7 @@ class Attention(nn.Module):
 
 
 class LocationLayer(nn.Module):
-    def __init__(self, out_features, bias=False, init='linear'):
+    def __init__(self, out_features, bias=False, init="linear"):
         super().__init__()
 
         self.conv = Conv1d(2, 32, 31, padding=31 // 2, bias=bias)

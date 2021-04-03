@@ -27,10 +27,12 @@ def batch_convolve(a, b):
     assert a.size(0) == b.size(0)
     assert a.size(1) == b.size(1)
 
-    output = torch.Tensor(a.size(0), a.size(1), max(a.size(2), b.size(2)) - min(a.size(2), b.size(2)) // 2 * 2)
+    output = torch.Tensor(
+        a.size(0), a.size(1), max(a.size(2), b.size(2)) - min(a.size(2), b.size(2)) // 2 * 2
+    )
 
     for i in range(a.size(0)):
-        output[i:i + 1] = F.conv1d(a[i:i + 1], b[i:i + 1])
+        output[i : i + 1] = F.conv1d(a[i : i + 1], b[i : i + 1])
 
     return output
 
@@ -52,7 +54,7 @@ def gate(w_content, w_prev, g):
 def shift(w_gate, s):
     w_gate = w_gate.unsqueeze(1)
     s = s.unsqueeze(1)
-    w_gate = F.pad(w_gate, (1, 1), mode='circular')
+    w_gate = F.pad(w_gate, (1, 1), mode="circular")
     w = batch_convolve(w_gate, s)
     w = w.squeeze(1)
 
@@ -60,7 +62,7 @@ def shift(w_gate, s):
 
 
 def sharpen(w_shift, y):
-    w = w_shift**y
+    w = w_shift ** y
     w = w / w.sum(1, keepdim=True)
 
     return w
@@ -103,5 +105,5 @@ def memory_write(m, w, e, a):
     pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

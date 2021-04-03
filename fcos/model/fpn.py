@@ -13,8 +13,8 @@ class FPN(nn.Module):
 
         self.p5_to_p6 = ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform())
         self.p6_to_p7 = nn.Sequential(
-            ReLU(),
-            ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform()))
+            ReLU(), ConvNorm(256, 256, 3, stride=2, padding=1, init=KaimingUniform())
+        )
 
         self.p5c4_to_p4 = UpsampleMerge(featuremap_depths[4])
         self.p4c3_to_p3 = UpsampleMerge(featuremap_depths[3])
@@ -44,7 +44,7 @@ class UpsampleMerge(nn.Module):
         assert c.size(2) == p.size(2) * 2
         assert c.size(3) == p.size(3) * 2
 
-        p = F.interpolate(p, size=(c.size(2), c.size(3)), mode='nearest')
+        p = F.interpolate(p, size=(c.size(2), c.size(3)), mode="nearest")
         c = self.projection(c)
         input = p + c
         input = self.output(input)

@@ -13,7 +13,7 @@ class Normal(object):
 
 
 class KaimingUniform(object):
-    def __init__(self, nonlinearity='linear'):
+    def __init__(self, nonlinearity="linear"):
         self.nonlinearity = nonlinearity
 
     def init_(self, weight):

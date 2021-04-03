@@ -1,8 +1,16 @@
 import torch
 
 from fcos.utils import Detections, flatten_detection_map
-from object_detection.box_utils import boxes_area, boxes_to_offsets, offsets_to_boxes, pairwise, \
-    boxes_contain_points, tl_br_to_centers, boxes_to_tl_br, tl_br_to_boxes
+from object_detection.box_utils import (
+    boxes_area,
+    boxes_contain_points,
+    boxes_to_offsets,
+    boxes_to_tl_br,
+    offsets_to_boxes,
+    pairwise,
+    tl_br_to_boxes,
+    tl_br_to_centers,
+)
 from object_detection.utils import per_class_nms
 
 
@@ -20,7 +28,7 @@ class BoxCoder(object):
         loc_maps = []
         for i, level in enumerate(self.levels):
             if level is not None:
-                stride = 2**i
+                stride = 2 ** i
                 strides.append(torch.empty(size.prod(), device=dets.boxes.device).fill_(stride))
 
                 yx_map = build_yx_map(size, stride, device=dets.boxes.device)
@@ -48,7 +56,7 @@ class BoxCoder(object):
         yx_maps = []
         for i, level in enumerate(self.levels):
             if level is not None:
-                stride = 2**i
+                stride = 2 ** i
                 strides.append(torch.empty(size.prod(), device=class_maps.device).fill_(stride))
 
                 yx_map = build_yx_map(size, stride, device=class_maps.device)
@@ -72,19 +80,12 @@ class BoxCoder(object):
         scores = scores[fg]
         cents = cent_maps[fg]
 
-        keep = per_class_nms(
-            boxes,
-            torch.sqrt(scores * cents),
-            class_ids,
-            self.iou_threshold)
+        keep = per_class_nms(boxes, torch.sqrt(scores * cents), class_ids, self.iou_threshold)
         boxes = boxes[keep]
         class_ids = class_ids[keep]
         scores = scores[keep]
 
-        return Detections(
-            class_ids=class_ids,
-            boxes=boxes,
-            scores=scores)
+        return Detections(class_ids=class_ids, boxes=boxes, scores=scores)
 
 
 def compute_centerness(offsets):
@@ -104,9 +105,7 @@ def compute_sub_boxes(boxes, stride, r=1.5):
     sub_tl = centers - stride * r
     sub_br = centers + stride * r
 
-    sub_boxes = tl_br_to_boxes(
-        torch.max(tl, sub_tl),
-        torch.min(br, sub_br))
+    sub_boxes = tl_br_to_boxes(torch.max(tl, sub_tl), torch.min(br, sub_br))
 
     return sub_boxes
 
@@ -133,7 +132,7 @@ def boxes_to_map(dets, yx_map, stride, bounds):
     matches = inside & bounded
 
     areas = boxes_area(dets.boxes).unsqueeze(1).repeat(1, offsets.size(1))
-    areas[~matches] = float('inf')
+    areas[~matches] = float("inf")
 
     indices = areas.argmin(0)
 

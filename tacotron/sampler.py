@@ -7,12 +7,14 @@ class BatchSampler(torch.utils.data.Sampler):
     def __init__(self, data, batch_size, shuffle=False, drop_last=False):
         super().__init__(data)
 
-        data = pd.DataFrame({
-            'i': range(len(data)),
-            'size': data,
-        }).sort_values('size')
+        data = pd.DataFrame(
+            {
+                "i": range(len(data)),
+                "size": data,
+            }
+        ).sort_values("size")
 
-        batches = [group['i'] for _, group in data.groupby(np.arange(len(data)) // batch_size)]
+        batches = [group["i"] for _, group in data.groupby(np.arange(len(data)) // batch_size)]
         batches = [b for b in batches if len(b) > 0]
         if drop_last:
             batches = [b for b in batches if len(b) == batch_size]

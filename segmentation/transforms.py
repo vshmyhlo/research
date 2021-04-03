@@ -14,15 +14,15 @@ class ToTensor(object):
         self.num_classes = num_classes
 
     def __call__(self, input):
-        image = F.to_tensor(input['image'])
+        image = F.to_tensor(input["image"])
 
-        mask = np.array(input['mask'], dtype=np.int64)
+        mask = np.array(input["mask"], dtype=np.int64)
         mask = torch.from_numpy(mask)
 
         input = {
             **input,
-            'image': image,
-            'mask': mask,
+            "image": image,
+            "mask": mask,
         }
 
         return input
@@ -34,11 +34,7 @@ class RandomHorizontalFlip(object):
 
     def __call__(self, input):
         if random.random() < self.p:
-            input = {
-                **input,
-                'image': F.hflip(input['image']),
-                'mask': F.hflip(input['mask'])
-            }
+            input = {**input, "image": F.hflip(input["image"]), "mask": F.hflip(input["mask"])}
 
         return input
 
@@ -52,8 +48,8 @@ class Resize(object):
     def __call__(self, input):
         input = {
             **input,
-            'image': F.resize(input['image'], self.size, self.interpolation),
-            'mask': F.resize(input['mask'], self.size, Image.NEAREST),
+            "image": F.resize(input["image"], self.size, self.interpolation),
+            "mask": F.resize(input["mask"], self.size, Image.NEAREST),
         }
 
         return input
@@ -69,15 +65,15 @@ class CenterCrop(object):
     def __call__(self, input):
         input = {
             **input,
-            'image': F.center_crop(input['image'], self.size),
-            'mask': F.center_crop(input['mask'], self.size),
+            "image": F.center_crop(input["image"], self.size),
+            "mask": F.center_crop(input["mask"], self.size),
         }
 
         return input
 
 
 class RandomCrop(object):
-    def __init__(self, size, padding=None, pad_if_needed=False, fill=0, padding_mode='constant'):
+    def __init__(self, size, padding=None, pad_if_needed=False, fill=0, padding_mode="constant"):
         if isinstance(size, numbers.Number):
             self.size = (int(size), int(size))
         else:
@@ -88,12 +84,12 @@ class RandomCrop(object):
         self.padding_mode = padding_mode
 
     def __call__(self, input):
-        params = self.get_params(input['image'], self.size)
+        params = self.get_params(input["image"], self.size)
 
         input = {
             **input,
-            'image': self.apply(input['image'], params),
-            'mask': self.apply(input['mask'], params),
+            "image": self.apply(input["image"], params),
+            "mask": self.apply(input["mask"], params),
         }
 
         return input

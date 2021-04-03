@@ -27,7 +27,9 @@ class StratifiedGroupKFold(object):
             y_counts_per_fold[fold] += y_counts
             std_per_label = []
             for label in range(labels_num):
-                label_std = np.std([y_counts_per_fold[i][label] / y_distr[label] for i in range(self.n_splits)])
+                label_std = np.std(
+                    [y_counts_per_fold[i][label] / y_distr[label] for i in range(self.n_splits)]
+                )
                 std_per_label.append(label_std)
             y_counts_per_fold[fold] -= y_counts
             return np.mean(std_per_label)
@@ -35,8 +37,10 @@ class StratifiedGroupKFold(object):
         groups_and_y_counts = list(y_counts_per_group.items())
         random.Random(self.random_state).shuffle(groups_and_y_counts)
 
-        for g, y_counts in tqdm(sorted(groups_and_y_counts, key=lambda x: -np.std(x[1])),
-                                total=len(groups_and_y_counts)):
+        for g, y_counts in tqdm(
+            sorted(groups_and_y_counts, key=lambda x: -np.std(x[1])),
+            total=len(groups_and_y_counts),
+        ):
             best_fold = None
             min_eval = None
             for i in range(self.n_splits):
@@ -66,16 +70,14 @@ class SimpleStratifiedGroupKFold(object):
 
     def split(self, x, y, groups):
         def compute_stats(data):
-            return pd.Series(
-                [(~data['target']).sum(), data['target'].sum()],
-                index=['neg', 'pos'])
+            return pd.Series([(~data["target"]).sum(), data["target"].sum()], index=["neg", "pos"])
 
-        data = pd.DataFrame({'target': y, 'group': groups}).reset_index(drop=True)
-        groups = data.groupby('group').apply(compute_stats).sort_values('neg')
+        data = pd.DataFrame({"target": y, "group": groups}).reset_index(drop=True)
+        groups = data.groupby("group").apply(compute_stats).sort_values("neg")
 
-        data['fold'] = None
+        data["fold"] = None
         for n in range(self.n_splits):
-            data.loc[data['group'].isin(groups.iloc[n::self.n_splits].index), 'fold'] = n
+            data.loc[data["group"].isin(groups.iloc[n :: self.n_splits].index), "fold"] = n
 
         for n in range(self.n_splits):
-            yield data[data['fold'] != n].index.values, data[data['fold'] == n].index.values
+            yield data[data["fold"] != n].index.values, data[data["fold"] == n].index.values

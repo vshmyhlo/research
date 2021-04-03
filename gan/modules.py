@@ -26,10 +26,12 @@ class AdditiveNoise(nn.Module):
 
         self.weight = nn.Parameter(torch.Tensor(1, in_channels, 1, 1))
 
-        torch.nn.init.constant_(self.weight, 0.)
+        torch.nn.init.constant_(self.weight, 0.0)
 
     def forward(self, input):
-        noise = torch.normal(0., 1., size=(input.size(0), 1, input.size(2), input.size(3)), device=input.device)
+        noise = torch.normal(
+            0.0, 1.0, size=(input.size(0), 1, input.size(2), input.size(3)), device=input.device
+        )
 
         return input + noise * self.weight
 
@@ -41,7 +43,7 @@ class PixelNorm(nn.Module):
         self.eps = eps
 
     def forward(self, input):
-        norm = torch.sqrt((input**2).mean(1, keepdim=True) + self.eps)
+        norm = torch.sqrt((input ** 2).mean(1, keepdim=True) + self.eps)
         input = input / norm
 
         return input
@@ -56,7 +58,7 @@ class InstanceNorm(nn.Module):
     def forward(self, input):
         mean = input.mean((2, 3), keepdim=True)
         input = input - mean
-        norm = torch.sqrt((input**2).mean((2, 3), keepdim=True) + self.eps)
+        norm = torch.sqrt((input ** 2).mean((2, 3), keepdim=True) + self.eps)
         input = input / norm
 
         return input
@@ -72,7 +74,7 @@ class MinibatchStdDev(nn.Module):
         stats = input
 
         stats = stats - stats.mean(0, keepdim=True)
-        stats = torch.sqrt((stats**2).mean(0, keepdim=True) + self.eps)
+        stats = torch.sqrt((stats ** 2).mean(0, keepdim=True) + self.eps)
         stats = stats.mean((1, 2, 3), keepdim=True)
 
         stats = stats.repeat(input.size(0), 1, input.size(2), input.size(3))
@@ -97,40 +99,62 @@ class AdaptiveInstanceNorm(nn.Module):
 
 
 class ConvEq(nn.Conv2d):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, scale=1.):
-        super().__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, scale=1.0
+    ):
+        super().__init__(
+            in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias
+        )
 
         self.scale = scale
 
-        torch.nn.init.normal_(self.weight, 0., 1.)
-        torch.nn.init.constant_(self.bias, 0.)
+        torch.nn.init.normal_(self.weight, 0.0, 1.0)
+        torch.nn.init.constant_(self.bias, 0.0)
 
     def forward(self, input):
-        weight = kaiming_normal_scale(self.weight * self.scale, a=0.2, mode='fan_in', nonlinearity='leaky_relu')
+        weight = kaiming_normal_scale(
+            self.weight * self.scale, a=0.2, mode="fan_in", nonlinearity="leaky_relu"
+        )
 
-        return F.conv2d(input, weight, self.bias, self.stride,
-                        self.padding, self.dilation, self.groups)
+        return F.conv2d(
+            input, weight, self.bias, self.stride, self.padding, self.dilation, self.groups
+        )
 
 
 class ConvTransposeEq(nn.ConvTranspose2d):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, scale=1.):
-        super().__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, scale=1.0
+    ):
+        super().__init__(
+            in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias
+        )
 
         self.scale = scale
 
-        torch.nn.init.normal_(self.weight, 0., 1.)
-        torch.nn.init.constant_(self.bias, 0.)
+        torch.nn.init.normal_(self.weight, 0.0, 1.0)
+        torch.nn.init.constant_(self.bias, 0.0)
 
     def forward(self, input, output_size=None):
-        weight = kaiming_normal_scale(self.weight * self.scale, a=0.2, mode='fan_in', nonlinearity='leaky_relu')
-        output_padding = self._output_padding(input, output_size, self.stride, self.padding, self.kernel_size)
+        weight = kaiming_normal_scale(
+            self.weight * self.scale, a=0.2, mode="fan_in", nonlinearity="leaky_relu"
+        )
+        output_padding = self._output_padding(
+            input, output_size, self.stride, self.padding, self.kernel_size
+        )
 
         return F.conv_transpose2d(
-            input, weight, self.bias, self.stride, self.padding,
-            output_padding, self.groups, self.dilation)
+            input,
+            weight,
+            self.bias,
+            self.stride,
+            self.padding,
+            output_padding,
+            self.groups,
+            self.dilation,
+        )
 
 
-def kaiming_normal_scale(tensor, a=0, mode='fan_in', nonlinearity='leaky_relu'):
+def kaiming_normal_scale(tensor, a=0, mode="fan_in", nonlinearity="leaky_relu"):
     fan = _calculate_correct_fan(tensor, mode)
     gain = calculate_gain(nonlinearity, a)
     std = gain / math.sqrt(fan)

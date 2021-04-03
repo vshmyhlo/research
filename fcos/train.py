@@ -19,24 +19,31 @@ from tqdm import tqdm
 
 from fcos.box_coder import BoxCoder
 from fcos.loss import compute_loss
+
 # from detection.losses import boxes_iou_loss, smooth_l1_loss, focal_loss
 # from detection.map import per_class_precision_recall_to_map
 from fcos.metrics import FPS, PerClassPR
 from fcos.model import FCOS
 from fcos.model.modules import BatchNormFreeze
 from fcos.transforms import BuildTargets
-from fcos.utils import apply_recursively
+
 # from detection.model import RetinaNet
-from fcos.utils import draw_boxes
-from fcos.utils import foreground_binary_coding
+from fcos.utils import apply_recursively, draw_boxes, foreground_binary_coding
 from lr_scheduler import WarmupCosineAnnealingLR
+
 # from detection.anchor_utils import compute_anchor
 # from detection.box_coding import decode_boxes, shifts_scales_to_boxes, boxes_to_shifts_scales
 # from detection.box_utils import boxes_iou
 # from detection.config import build_default_config
 from object_detection.datasets.coco import Dataset as CocoDataset
-from object_detection.transforms import Resize, RandomCrop, RandomFlipLeftRight, FilterBoxes, denormalize
-from utils import random_seed, DataLoaderSlice, worker_init_fn
+from object_detection.transforms import (
+    FilterBoxes,
+    RandomCrop,
+    RandomFlipLeftRight,
+    Resize,
+    denormalize,
+)
+from utils import DataLoaderSlice, random_seed, worker_init_fn
 
 # from detection.utils import draw_boxes, DataLoaderSlice, pr_curve_plot, fill_scores
 
@@ -70,7 +77,7 @@ from utils import random_seed, DataLoaderSlice, worker_init_fn
 
 MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def compute_metric(input, target):
@@ -81,60 +88,63 @@ def compute_metric(input, target):
     iou = boxes_iou(input_loc[loc_mask], target_loc[loc_mask])
 
     return {
-        'iou': iou,
+        "iou": iou,
     }
 
 
 def build_optimizer(parameters, config):
-    if config.train.opt.type == 'sgd':
+    if config.train.opt.type == "sgd":
         return torch.optim.SGD(
             parameters,
             config.train.opt.learning_rate,
             momentum=config.train.opt.momentum,
             weight_decay=config.train.opt.weight_decay,
-            nesterov=True)
+            nesterov=True,
+        )
     else:
-        raise AssertionError('invalid config.train.opt.type {}'.format(config.train.opt.type))
+        raise AssertionError("invalid config.train.opt.type {}".format(config.train.opt.type))
 
 
 def build_scheduler(optimizer, config, steps_per_epoch, start_epoch):
     # FIXME:
-    if config.train.sched.type == 'cosine':
+    if config.train.sched.type == "cosine":
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=config.train.epochs * steps_per_epoch,
-            last_epoch=start_epoch * steps_per_epoch - 1)
-    elif config.train.sched.type == 'warmup_cosine':
+            last_epoch=start_epoch * steps_per_epoch - 1,
+        )
+    elif config.train.sched.type == "warmup_cosine":
         return WarmupCosineAnnealingLR(
             optimizer,
             epoch_warmup=config.train.sched.epochs_warmup * steps_per_epoch,
             epoch_max=config.train.epochs * steps_per_epoch,
-            last_epoch=start_epoch * steps_per_epoch - 1)
-    elif config.train.sched.type == 'step':
+            last_epoch=start_epoch * steps_per_epoch - 1,
+        )
+    elif config.train.sched.type == "step":
         return torch.optim.lr_scheduler.MultiStepLR(
             optimizer,
             milestones=[e * steps_per_epoch for e in config.train.sched.steps],
             gamma=0.1,
-            last_epoch=start_epoch * steps_per_epoch - 1)
+            last_epoch=start_epoch * steps_per_epoch - 1,
+        )
     else:
-        raise AssertionError('invalid config.train.sched.type {}'.format(config.train.sched.type))
+        raise AssertionError("invalid config.train.sched.type {}".format(config.train.sched.type))
 
 
 def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names, epoch, config):
     metrics = {
-        'loss': Mean(),
-        'loss/class': Mean(),
-        'loss/loc': Mean(),
-        'loss/cent': Mean(),
-        'learning_rate': Last(),
+        "loss": Mean(),
+        "loss/class": Mean(),
+        "loss/loc": Mean(),
+        "loss/cent": Mean(),
+        "learning_rate": Last(),
     }
 
     model.train()
     optimizer.zero_grad()
     for i, batch in tqdm(
-            enumerate(data_loader, 1),
-            desc='epoch {} train'.format(epoch),
-            total=len(data_loader)):
+        enumerate(data_loader, 1), desc="epoch {} train".format(epoch), total=len(data_loader)
+    ):
         images, targets, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
 
         output = model(images)
@@ -142,10 +152,10 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
         loss_dict = compute_loss(input=output, target=targets)
         loss = sum(loss_dict.values())
 
-        metrics['loss'].update(loss.data.cpu())
+        metrics["loss"].update(loss.data.cpu())
         for k in loss_dict:
-            metrics['loss/{}'.format(k)].update(loss_dict[k].data.cpu())
-        metrics['learning_rate'].update(np.squeeze(scheduler.get_lr()))
+            metrics["loss/{}".format(k)].update(loss_dict[k].data.cpu())
+        metrics["learning_rate"].update(np.squeeze(scheduler.get_lr()))
 
         (loss.mean() / config.train.acc_steps).backward()
         if i % config.train.acc_steps == 0:
@@ -155,7 +165,7 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
 
     with torch.no_grad():
         metrics = {k: metrics[k].compute_and_reset() for k in metrics}
-        writer = SummaryWriter(os.path.join(config.experiment_path, 'train'))
+        writer = SummaryWriter(os.path.join(config.experiment_path, "train"))
 
         for k in metrics:
             writer.add_scalar(k, metrics[k], global_step=epoch)
@@ -164,86 +174,97 @@ def train_epoch(model, optimizer, scheduler, data_loader, box_coder, class_names
 
         dets_true = [
             box_coder.decode(foreground_binary_coding(c, 80), r, s, images.size()[2:])
-            for c, r, s in zip(*targets)]
+            for c, r, s in zip(*targets)
+        ]
         dets_pred = [
             box_coder.decode(c.sigmoid(), r, s.sigmoid(), images.size()[2:])
-            for c, r, s in zip(*output)]
+            for c, r, s in zip(*output)
+        ]
 
         true = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_true)]
         pred = [draw_boxes(i, d, class_names) for i, d in zip(images, dets_pred)]
 
         writer.add_image(
-            'detections/true',
-            torchvision.utils.make_grid(true, nrow=4),
-            global_step=epoch)
+            "detections/true", torchvision.utils.make_grid(true, nrow=4), global_step=epoch
+        )
         writer.add_image(
-            'detections/pred',
-            torchvision.utils.make_grid(pred, nrow=4),
-            global_step=epoch)
+            "detections/pred", torchvision.utils.make_grid(pred, nrow=4), global_step=epoch
+        )
 
         writer.flush()
         writer.close()
 
 
 def eval_epoch(model, data_loader, class_names, epoch, config):
-    writer = SummaryWriter(os.path.join(config.experiment_path, 'eval'))
+    writer = SummaryWriter(os.path.join(config.experiment_path, "eval"))
 
     metrics = {
-        'loss': Mean(),
-        'iou': Mean(),
-        'fps': FPS(),
-        'pr': PerClassPR(),
+        "loss": Mean(),
+        "iou": Mean(),
+        "fps": FPS(),
+        "pr": PerClassPR(),
     }
 
     model.eval()
     with torch.no_grad():
-        for batch in tqdm(data_loader, desc='epoch {} evaluation'.format(epoch)):
+        for batch in tqdm(data_loader, desc="epoch {} evaluation".format(epoch)):
             images, targets, dets_true = apply_recursively(lambda x: x.to(DEVICE), batch)
 
             output = model(images)
 
             loss = compute_loss(input=output, target=targets)
 
-            metrics['loss'].update(loss.data.cpu().numpy())
-            metrics['fps'].update(images.size(0))
+            metrics["loss"].update(loss.data.cpu().numpy())
+            metrics["fps"].update(images.size(0))
 
             output = decode(output, anchors)
 
-            dets_pred = [
-                decode_boxes((c.sigmoid(), r))
-                for c, r in zip(*output)]
-            metrics['pr'].update((dets_true, dets_pred))
+            dets_pred = [decode_boxes((c.sigmoid(), r)) for c, r in zip(*output)]
+            metrics["pr"].update((dets_true, dets_pred))
 
             metric = compute_metric(input=output, target=targets)
             for k in metric:
                 metrics[k].update(metric[k].data.cpu().numpy())
 
         metrics = {k: metrics[k].compute_and_reset() for k in metrics}
-        pr = metrics['pr']
-        del metrics['pr']
-        metrics['map'] = per_class_precision_recall_to_map(pr)
-        print('[EPOCH {}][EVAL] {}'.format(epoch, ', '.join('{}: {:.8f}'.format(k, metrics[k]) for k in metrics)))
+        pr = metrics["pr"]
+        del metrics["pr"]
+        metrics["map"] = per_class_precision_recall_to_map(pr)
+        print(
+            "[EPOCH {}][EVAL] {}".format(
+                epoch, ", ".join("{}: {:.8f}".format(k, metrics[k]) for k in metrics)
+            )
+        )
         for k in metrics:
             writer.add_scalar(k, metrics[k], global_step=epoch)
 
         for class_id in pr:
             writer.add_figure(
-                'pr/{}'.format(class_names[class_id]), pr_curve_plot(pr[class_id]), global_step=epoch)
+                "pr/{}".format(class_names[class_id]),
+                pr_curve_plot(pr[class_id]),
+                global_step=epoch,
+            )
 
-        dets_pred = [
-            decode_boxes((c.sigmoid(), r))
-            for c, r in zip(*output)]
+        dets_pred = [decode_boxes((c.sigmoid(), r)) for c, r in zip(*output)]
         images_true = [
             draw_boxes(denormalize(i, mean=MEAN, std=STD), fill_scores(d), class_names)
-            for i, d in zip(images, dets_true)]
+            for i, d in zip(images, dets_true)
+        ]
         images_pred = [
             draw_boxes(denormalize(i, mean=MEAN, std=STD), d, class_names)
-            for i, d in zip(images, dets_pred)]
+            for i, d in zip(images, dets_pred)
+        ]
 
         writer.add_image(
-            'images_true', torchvision.utils.make_grid(images_true, nrow=4, normalize=True), global_step=epoch)
+            "images_true",
+            torchvision.utils.make_grid(images_true, nrow=4, normalize=True),
+            global_step=epoch,
+        )
         writer.add_image(
-            'images_pred', torchvision.utils.make_grid(images_pred, nrow=4, normalize=True), global_step=epoch)
+            "images_pred",
+            torchvision.utils.make_grid(images_pred, nrow=4, normalize=True),
+            global_step=epoch,
+        )
 
 
 def collate_fn(batch):
@@ -256,49 +277,61 @@ def collate_fn(batch):
 
 
 @click.command()
-@click.option('--config-path', type=click.Path(), required=True)
-@click.option('--dataset-path', type=click.Path(), required=True)
-@click.option('--experiment-path', type=click.Path(), required=True)
-@click.option('--restore-path', type=click.Path())
-@click.option('--workers', type=click.INT, default=os.cpu_count())
+@click.option("--config-path", type=click.Path(), required=True)
+@click.option("--dataset-path", type=click.Path(), required=True)
+@click.option("--experiment-path", type=click.Path(), required=True)
+@click.option("--restore-path", type=click.Path())
+@click.option("--workers", type=click.INT, default=os.cpu_count())
 def main(config_path, **kwargs):
-    config = load_config(
-        config_path,
-        **kwargs)
+    config = load_config(config_path, **kwargs)
     del kwargs
     random_seed(config.seed)
 
     box_coder = BoxCoder(config.model.levels)
 
-    train_transform = T.Compose([
-        Resize(config.resize_size),
-        RandomCrop(config.crop_size),
-        RandomFlipLeftRight(),
-        ApplyTo('image', T.Compose([
-            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
-            T.ToTensor(),
-            T.Normalize(mean=MEAN, std=STD),
-        ])),
-        FilterBoxes(),
-        BuildTargets(box_coder),
-    ])
-    eval_transform = T.Compose([
-        Resize(config.resize_size),
-        RandomCrop(config.crop_size),
-        ApplyTo('image', T.Compose([
-            T.ToTensor(),
-            T.Normalize(mean=MEAN, std=STD),
-        ])),
-        FilterBoxes(),
-        BuildTargets(box_coder),
-    ])
+    train_transform = T.Compose(
+        [
+            Resize(config.resize_size),
+            RandomCrop(config.crop_size),
+            RandomFlipLeftRight(),
+            ApplyTo(
+                "image",
+                T.Compose(
+                    [
+                        T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+                        T.ToTensor(),
+                        T.Normalize(mean=MEAN, std=STD),
+                    ]
+                ),
+            ),
+            FilterBoxes(),
+            BuildTargets(box_coder),
+        ]
+    )
+    eval_transform = T.Compose(
+        [
+            Resize(config.resize_size),
+            RandomCrop(config.crop_size),
+            ApplyTo(
+                "image",
+                T.Compose(
+                    [
+                        T.ToTensor(),
+                        T.Normalize(mean=MEAN, std=STD),
+                    ]
+                ),
+            ),
+            FilterBoxes(),
+            BuildTargets(box_coder),
+        ]
+    )
 
-    if config.dataset == 'coco':
+    if config.dataset == "coco":
         Dataset = CocoDataset
     else:
-        raise AssertionError('invalid config.dataset {}'.format(config.dataset))
-    train_dataset = Dataset(config.dataset_path, subset='train', transform=train_transform)
-    eval_dataset = Dataset(config.dataset_path, subset='eval', transform=eval_transform)
+        raise AssertionError("invalid config.dataset {}".format(config.dataset))
+    train_dataset = Dataset(config.dataset_path, subset="train", transform=train_transform)
+    eval_dataset = Dataset(config.dataset_path, subset="eval", transform=eval_transform)
     class_names = train_dataset.class_names
 
     train_data_loader = torch.utils.data.DataLoader(
@@ -308,7 +341,8 @@ def main(config_path, **kwargs):
         shuffle=True,
         num_workers=config.workers,
         collate_fn=collate_fn,
-        worker_init_fn=worker_init_fn)
+        worker_init_fn=worker_init_fn,
+    )
     if config.train_steps is not None:
         train_data_loader = DataLoaderSlice(train_data_loader, config.train_steps)
     eval_data_loader = torch.utils.data.DataLoader(
@@ -318,7 +352,8 @@ def main(config_path, **kwargs):
         shuffle=True,
         num_workers=config.workers,
         collate_fn=collate_fn,
-        worker_init_fn=worker_init_fn)
+        worker_init_fn=worker_init_fn,
+    )
 
     model = FCOS(config.model, num_classes=Dataset.num_classes)
     if config.model.freeze_bn:
@@ -327,12 +362,12 @@ def main(config_path, **kwargs):
 
     optimizer = build_optimizer(model.parameters(), config)
 
-    saver = Saver({'model': model, 'optimizer': optimizer})
+    saver = Saver({"model": model, "optimizer": optimizer})
     start_epoch = 0
     if config.restore_path is not None:
-        saver.load(config.restore_path, keys=['model'])
-    if os.path.exists(os.path.join(config.experiment_path, 'checkpoint.pth')):
-        start_epoch = saver.load(os.path.join(config.experiment_path, 'checkpoint.pth'))
+        saver.load(config.restore_path, keys=["model"])
+    if os.path.exists(os.path.join(config.experiment_path, "checkpoint.pth")):
+        start_epoch = saver.load(os.path.join(config.experiment_path, "checkpoint.pth"))
 
     scheduler = build_scheduler(optimizer, config, len(train_data_loader), start_epoch)
 
@@ -345,7 +380,8 @@ def main(config_path, **kwargs):
             box_coder=box_coder,
             class_names=class_names,
             epoch=epoch,
-            config=config)
+            config=config,
+        )
         gc.collect()
         # eval_epoch(
         #     model=model,
@@ -356,8 +392,8 @@ def main(config_path, **kwargs):
         #     config=config)
         gc.collect()
 
-        saver.save(os.path.join(config.experiment_path, 'checkpoint.pth'), epoch=epoch + 1)
+        saver.save(os.path.join(config.experiment_path, "checkpoint.pth"), epoch=epoch + 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -8,6 +8,8 @@ class WarmupCosineAnnealingLR(torch.optim.lr_scheduler.LambdaLR):
             if epoch < epoch_warmup:
                 return epoch / epoch_warmup
             else:
-                return (np.cos((epoch - epoch_warmup) / (epoch_max - epoch_warmup) * np.pi) + 1) / 2
+                return (
+                    np.cos((epoch - epoch_warmup) / (epoch_max - epoch_warmup) * np.pi) + 1
+                ) / 2
 
         super().__init__(optimizer, f, last_epoch=last_epoch)

@@ -1,23 +1,19 @@
 import torch
 from torch import nn
 
-
 # Adapted from "Tunable U-Net implementation in PyTorch"
 # https://github.com/jvanvugt/pytorch-unet
 
 
 class ReLU(nn.LeakyReLU):
-    def __init__(self, ):
+    def __init__(
+        self,
+    ):
         super().__init__(0.1, inplace=True)
 
 
 class UNet(nn.Module):
-    def __init__(
-            self,
-            in_channels=1,
-            n_classes=2,
-            depth=5,
-            wf=5):
+    def __init__(self, in_channels=1, n_classes=2, depth=5, wf=5):
         super().__init__()
 
         self.relu = ReLU()
@@ -26,17 +22,15 @@ class UNet(nn.Module):
         prev_channels = in_channels
         self.down_path = nn.ModuleList()
         for i in range(depth):
-            self.down_path.append(
-                UNetConvBlock(prev_channels, 2**(wf + i)))
-            prev_channels = 2**(wf + i)
+            self.down_path.append(UNetConvBlock(prev_channels, 2 ** (wf + i)))
+            prev_channels = 2 ** (wf + i)
 
         self.midconv = nn.Conv2d(prev_channels, prev_channels, kernel_size=3, padding=1)
 
         self.up_path = nn.ModuleList()
         for i in reversed(range(depth - 1)):
-            self.up_path.append(
-                UNetUpBlock(prev_channels, 2**(wf + i)))
-            prev_channels = 2**(wf + i)
+            self.up_path.append(UNetUpBlock(prev_channels, 2 ** (wf + i)))
+            prev_channels = 2 ** (wf + i)
 
         self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=3, padding=1)
 
@@ -66,7 +60,8 @@ class UNetConvBlock(nn.Sequential):
             nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
             ReLU(),
             nn.Conv2d(out_size, out_size, kernel_size=3, padding=1),
-            ReLU())
+            ReLU(),
+        )
 
 
 class UNetUpBlock(nn.Module):
@@ -74,8 +69,9 @@ class UNetUpBlock(nn.Module):
         super().__init__()
 
         self.up = nn.Sequential(
-            nn.Upsample(mode='bilinear', scale_factor=2),
-            nn.Conv2d(in_size, out_size, kernel_size=3, padding=1))
+            nn.Upsample(mode="bilinear", scale_factor=2),
+            nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
+        )
         self.conv_block = UNetConvBlock(in_size, out_size)
 
     # def center_crop(self, layer, target_size):

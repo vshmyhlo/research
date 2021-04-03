@@ -4,11 +4,14 @@ from object_detection.utils import per_class_nms
 
 
 def test_per_class_nms():
-    boxes = torch.tensor([
-        [0, 0, 1, 1],
-        [0, 0, 1, 1],
-        [0, 0, 0.5, 0.5],
-    ], dtype=torch.float)
+    boxes = torch.tensor(
+        [
+            [0, 0, 1, 1],
+            [0, 0, 1, 1],
+            [0, 0, 0.5, 0.5],
+        ],
+        dtype=torch.float,
+    )
     scores = torch.ones(boxes.size(0), dtype=torch.float)
     class_ids = torch.tensor([0, 0, 0], dtype=torch.long)
 

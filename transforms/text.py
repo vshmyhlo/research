@@ -17,4 +17,3 @@ class Normalize(object):
         input = input.lower()
 
         return input
-   

@@ -4,15 +4,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from PIL import ImageFont, Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from torch.nn import functional as F
-from torchvision.transforms.functional import to_tensor, to_pil_image
+from torchvision.transforms.functional import to_pil_image, to_tensor
 
 from object_detection.box_utils import boxes_clip
 from utils import one_hot, weighted_sum
 
 
-class Detections(namedtuple('Detections', ['class_ids', 'boxes', 'scores'])):
+class Detections(namedtuple("Detections", ["class_ids", "boxes", "scores"])):
     def to(self, device):
         return self.apply(lambda x: x.to(device))
 
@@ -24,9 +24,8 @@ class Detections(namedtuple('Detections', ['class_ids', 'boxes', 'scores'])):
                 return f(x)
 
         return Detections(
-            class_ids=apply(self.class_ids),
-            boxes=apply(self.boxes),
-            scores=apply(self.scores))
+            class_ids=apply(self.class_ids), boxes=apply(self.boxes), scores=apply(self.scores)
+        )
 
 
 def fill_scores(dets):
@@ -35,18 +34,20 @@ def fill_scores(dets):
     return Detections(
         class_ids=dets.class_ids,
         boxes=dets.boxes,
-        scores=torch.ones_like(dets.class_ids, dtype=torch.float))
+        scores=torch.ones_like(dets.class_ids, dtype=torch.float),
+    )
 
 
 # TODO: revisit
 # TODO: fix boxes usage
 def draw_boxes(image, detections, class_names, line_width=2, shade=True):
-    font = ImageFont.truetype('./data/Droid+Sans+Mono+Awesome.ttf', size=14)
+    font = ImageFont.truetype("./data/Droid+Sans+Mono+Awesome.ttf", size=14)
 
     detections = Detections(
         class_ids=detections.class_ids,
         boxes=boxes_clip(detections.boxes, image.size()[1:3]).round().long(),
-        scores=detections.scores)
+        scores=detections.scores,
+    )
 
     device = image.device
 
@@ -63,13 +64,19 @@ def draw_boxes(image, detections, class_names, line_width=2, shade=True):
     draw = ImageDraw.Draw(image)
 
     for c, (t, l, b, r), s in zip(
-            detections.class_ids.data.cpu().numpy(),
-            detections.boxes.data.cpu().numpy(),
-            detections.scores.data.cpu().numpy()):
+        detections.class_ids.data.cpu().numpy(),
+        detections.boxes.data.cpu().numpy(),
+        detections.scores.data.cpu().numpy(),
+    ):
         if len(class_names) > 1:
-            colors = np.random.RandomState(42).uniform(85, 255, size=(len(class_names), 3)).round().astype(np.uint8)
+            colors = (
+                np.random.RandomState(42)
+                .uniform(85, 255, size=(len(class_names), 3))
+                .round()
+                .astype(np.uint8)
+            )
             color = tuple(colors[c])
-            text = '{}: {:.2f}'.format(class_names[c], s)
+            text = "{}: {:.2f}".format(class_names[c], s)
             size = draw.textsize(text, font=font)
             draw.rectangle(((l, t - size[1]), (l + size[0] + line_width * 2, t)), fill=color)
             draw.text((l + line_width, t - size[1]), text, font=font, fill=(0, 0, 0))
@@ -91,8 +98,8 @@ def foreground_binary_coding(input, num_classes):
 def pr_curve_plot(pr):
     fig = plt.figure()
     plt.plot(pr[:, 1], pr[:, 0])
-    plt.xlabel('recall')
-    plt.ylabel('precision')
+    plt.xlabel("recall")
+    plt.ylabel("precision")
     plt.fill_between(pr[:, 1], 0, pr[:, 0], alpha=0.1)
     plt.xlim(0, 1)
     plt.ylim(0, 1)
@@ -134,11 +141,11 @@ def replace_bn_with_gn(m):
 
 def draw_class_map(image, class_map, num_classes):
     colors = np.random.RandomState(42).uniform(1 / 3, 1, size=(num_classes + 1, 3))
-    colors[0] = 0.
+    colors[0] = 0.0
     colors = torch.tensor(colors, dtype=torch.float, device=class_map.device)
 
     class_map = colors[class_map]
     class_map = class_map.permute(0, 3, 1, 2)
-    class_map = F.interpolate(class_map, size=image.size()[2:], mode='nearest')
+    class_map = F.interpolate(class_map, size=image.size()[2:], mode="nearest")
 
     return weighted_sum(image, class_map, 0.5)

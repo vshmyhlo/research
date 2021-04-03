@@ -4,8 +4,7 @@ from torch import nn as nn
 
 
 class BatchConv2DLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1,
-                 padding=0, dilation=1):
+    def __init__(self, in_channels, out_channels, stride=1, padding=0, dilation=1):
         super(BatchConv2DLayer, self).__init__()
 
         self.stride = stride
@@ -17,19 +16,31 @@ class BatchConv2DLayer(nn.Module):
 
     def forward(self, x, weight, bias=None):
         if bias is None:
-            assert x.shape[0] == weight.shape[0], "dim=0 of x must be equal in size to dim=0 of weight"
+            assert (
+                x.shape[0] == weight.shape[0]
+            ), "dim=0 of x must be equal in size to dim=0 of weight"
         else:
-            assert x.shape[0] == weight.shape[0] and bias.shape[0] == weight.shape[
-                0], "dim=0 of bias must be equal in size to dim=0 of weight"
+            assert (
+                x.shape[0] == weight.shape[0] and bias.shape[0] == weight.shape[0]
+            ), "dim=0 of bias must be equal in size to dim=0 of weight"
 
         b_i, b_j, c, h, w = x.shape
         b_i, out_channels, in_channels, kernel_height_size, kernel_width_size = weight.shape
 
         out = x.permute([1, 0, 2, 3, 4]).contiguous().view(b_j, b_i * c, h, w)
-        weight = weight.view(b_i * out_channels, in_channels, kernel_height_size, kernel_width_size)
+        weight = weight.view(
+            b_i * out_channels, in_channels, kernel_height_size, kernel_width_size
+        )
 
-        out = F.conv2d(out, weight=weight, bias=None, stride=self.stride, dilation=self.dilation, groups=b_i,
-                       padding=self.padding)
+        out = F.conv2d(
+            out,
+            weight=weight,
+            bias=None,
+            stride=self.stride,
+            dilation=self.dilation,
+            groups=b_i,
+            padding=self.padding,
+        )
 
         out = out.view(b_j, b_i, out_channels, out.shape[-2], out.shape[-1])
 
@@ -42,8 +53,7 @@ class BatchConv2DLayer(nn.Module):
 
 
 class BatchConv1DLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1,
-                 padding=0, dilation=1):
+    def __init__(self, in_channels, out_channels, stride=1, padding=0, dilation=1):
         super(BatchConv1DLayer, self).__init__()
 
         self.stride = stride
@@ -55,10 +65,13 @@ class BatchConv1DLayer(nn.Module):
 
     def forward(self, x, weight, bias=None):
         if bias is None:
-            assert x.shape[0] == weight.shape[0], "dim=0 of x must be equal in size to dim=0 of weight"
+            assert (
+                x.shape[0] == weight.shape[0]
+            ), "dim=0 of x must be equal in size to dim=0 of weight"
         else:
-            assert x.shape[0] == weight.shape[0] and bias.shape[0] == weight.shape[
-                0], "dim=0 of bias must be equal in size to dim=0 of weight"
+            assert (
+                x.shape[0] == weight.shape[0] and bias.shape[0] == weight.shape[0]
+            ), "dim=0 of bias must be equal in size to dim=0 of weight"
 
         b_i, b_j, c, h = x.shape
         b_i, out_channels, in_channels, kernel_width_size = weight.shape
@@ -66,8 +79,15 @@ class BatchConv1DLayer(nn.Module):
         out = x.permute([1, 0, 2, 3]).contiguous().view(b_j, b_i * c, h)
         weight = weight.view(b_i * out_channels, in_channels, kernel_width_size)
 
-        out = F.conv1d(out, weight=weight, bias=None, stride=self.stride, dilation=self.dilation, groups=b_i,
-                       padding=self.padding)
+        out = F.conv1d(
+            out,
+            weight=weight,
+            bias=None,
+            stride=self.stride,
+            dilation=self.dilation,
+            groups=b_i,
+            padding=self.padding,
+        )
 
         out = out.view(b_j, b_i, out_channels, out.shape[-1])
 
@@ -85,10 +105,13 @@ class BatchLinearLayer(nn.Module):
 
     def forward(self, x, weight, bias=None):
         if bias is None:
-            assert x.shape[0] == weight.shape[0], "dim=0 of x must be equal in size to dim=0 of weight"
+            assert (
+                x.shape[0] == weight.shape[0]
+            ), "dim=0 of x must be equal in size to dim=0 of weight"
         else:
-            assert x.shape[0] == weight.shape[0] and bias.shape[0] == weight.shape[
-                0], "dim=0 of bias must be equal in size to dim=0 of weight"
+            assert (
+                x.shape[0] == weight.shape[0] and bias.shape[0] == weight.shape[0]
+            ), "dim=0 of bias must be equal in size to dim=0 of weight"
 
         out = torch.bmm(x, weight)
 
@@ -108,8 +131,8 @@ class CustomBatchNorm2d(nn.Module):
         self.weight = nn.Parameter(torch.Tensor(1, num_features, 1, 1))
         self.bias = nn.Parameter(torch.Tensor(1, num_features, 1, 1))
 
-        self.register_buffer('running_mean', torch.Tensor(1, num_features, 1, 1))
-        self.register_buffer('running_var', torch.Tensor(1, num_features, 1, 1))
+        self.register_buffer("running_mean", torch.Tensor(1, num_features, 1, 1))
+        self.register_buffer("running_var", torch.Tensor(1, num_features, 1, 1))
 
         self.reset_parameters()
         self.reset_running_stats()

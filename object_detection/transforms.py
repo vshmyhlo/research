@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from object_detection.box_utils import boxes_clip, boxes_area
+from object_detection.box_utils import boxes_area, boxes_clip
 
 
 class Resize(object):
@@ -19,7 +19,7 @@ class RandomCrop(object):
         self.size = size
 
     def __call__(self, input):
-        image = input['image']
+        image = input["image"]
 
         w, h = image.size
         t = np.random.randint(0, h - self.size + 1)
@@ -37,7 +37,7 @@ class RandomFlipLeftRight(object):
 
 
 class FilterBoxes(object):
-    def __init__(self, min_size=8**2):
+    def __init__(self, min_size=8 ** 2):
         self.min_size = min_size
 
     def __call__(self, input):
@@ -45,7 +45,7 @@ class FilterBoxes(object):
 
 
 def resize(input, size, interpolation=Image.BILINEAR):
-    image, boxes = input['image'], input['boxes']
+    image, boxes = input["image"], input["boxes"]
 
     w, h = image.size
     scale = size / min(w, h)
@@ -56,13 +56,13 @@ def resize(input, size, interpolation=Image.BILINEAR):
 
     return {
         **input,
-        'image': image,
-        'boxes': boxes,
+        "image": image,
+        "boxes": boxes,
     }
 
 
 def flip_left_right(input):
-    image, boxes = input['image'], input['boxes']
+    image, boxes = input["image"], input["boxes"]
 
     image = image.transpose(Image.FLIP_LEFT_RIGHT)
     w, _ = image.size
@@ -70,7 +70,7 @@ def flip_left_right(input):
 
     return {
         **input,
-        'image': image,
+        "image": image,
     }
 
 
@@ -86,7 +86,7 @@ def denormalize(tensor, mean, std, inplace=False):
 
 
 def crop(input, tl, hw):
-    image, class_ids, boxes = input['image'], input['class_ids'], input['boxes']
+    image, class_ids, boxes = input["image"], input["class_ids"], input["boxes"]
 
     t, l = tl
     h, w = hw
@@ -99,18 +99,18 @@ def crop(input, tl, hw):
 
     return {
         **input,
-        'image': image,
-        'class_ids': class_ids,
-        'boxes': boxes,
+        "image": image,
+        "class_ids": class_ids,
+        "boxes": boxes,
     }
 
 
 # TODO: test
 def filter_boxes(input, min_size):
-    keep = boxes_area(input['boxes']) >= min_size
+    keep = boxes_area(input["boxes"]) >= min_size
 
     return {
         **input,
-        'class_ids': input['class_ids'][keep],
-        'boxes': input['boxes'][keep],
+        "class_ids": input["class_ids"][keep],
+        "boxes": input["boxes"][keep],
     }

@@ -8,11 +8,11 @@ from rrin.unet import UNet
 
 def weight_init(m):
     if isinstance(m, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)):
-        nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
-        nn.init.constant_(m.bias, 0.)
+        nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity="leaky_relu")
+        nn.init.constant_(m.bias, 0.0)
     elif isinstance(m, (nn.BatchNorm2d,)):
-        nn.init.constant_(m.weight, 1.)
-        nn.init.constant_(m.bias, 0.)
+        nn.init.constant_(m.weight, 1.0)
+        nn.init.constant_(m.bias, 0.0)
 
 
 def warp(img, flow):
@@ -51,7 +51,9 @@ class Model(nn.Module):
         f_hat_t_0 = t * -f
         f_hat_t_1 = (1 - t) * f
 
-        f_tilde_t_0, f_tilde_t_1 = self.unet_2(torch.cat((i, f_hat_t_0, f_hat_t_1), 1)).split(2, dim=1)
+        f_tilde_t_0, f_tilde_t_1 = self.unet_2(torch.cat((i, f_hat_t_0, f_hat_t_1), 1)).split(
+            2, dim=1
+        )
 
         f_t_0 = f_hat_t_0 + f_tilde_t_0
         f_t_1 = f_hat_t_1 + f_tilde_t_1
@@ -59,16 +61,18 @@ class Model(nn.Module):
         i_hat_0_t = warp(i_0, f_t_0)
         i_hat_1_t = warp(i_1, f_t_1)
 
-        m_0, m_1 = F.sigmoid(self.unet_3(torch.cat((i, i_hat_0_t, i_hat_1_t, f_t_0, f_t_1), 1))).split(1, dim=1)
+        m_0, m_1 = F.sigmoid(
+            self.unet_3(torch.cat((i, i_hat_0_t, i_hat_1_t, f_t_0, f_t_1), 1))
+        ).split(1, dim=1)
 
         w_0, w_1 = (1 - t) * m_0, t * m_1
         i_hat_t_c = (w_0 * i_hat_0_t + w_1 * i_hat_1_t) / (w_0 + w_1 + 1e-8)
 
         etc = {
-            'flow_t_0': f_t_0,
-            'flow_t_1': f_t_1,
-            'mask_0': m_0,
-            'mask_1': m_1,
+            "flow_t_0": f_t_0,
+            "flow_t_1": f_t_1,
+            "mask_0": m_0,
+            "mask_1": m_1,
         }
 
         return i_hat_t_c, etc
@@ -78,5 +82,5 @@ class Model(nn.Module):
         i_tilde_t = self.unet_4(torch.cat((i_0, i_1, i_hat_t_c), 1))
         i_hat_t = i_hat_t_c + i_tilde_t
         # final = final  # .clamp(0,1)
-      
+
         return i_hat_t, etc

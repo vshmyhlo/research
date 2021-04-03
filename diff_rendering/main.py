@@ -1,10 +1,10 @@
-import torch
-import matplotlib.pyplot as plt
-import torch.nn.functional as F
-import torchvision.transforms.functional as TF
+from dataclasses import dataclass
 
 import click
-from dataclasses import dataclass
+import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 
 
 @dataclass()
@@ -21,9 +21,7 @@ class Sphere(object):
 
     def intersects(self, ray: Ray):
         ray = Ray(ray.orig.unsqueeze(1), ray.dir.unsqueeze(1))
-        self = Sphere(
-            self.cent.unsqueeze(0), self.rad.unsqueeze(0), self.col.unsqueeze(0)
-        )
+        self = Sphere(self.cent.unsqueeze(0), self.rad.unsqueeze(0), self.col.unsqueeze(0))
 
         sr = ray.orig - self.cent
 

@@ -9,11 +9,11 @@ import torchvision
 import torchvision.transforms as T
 from all_the_tools.config import load_config
 from all_the_tools.meters import Concat, Mean
+from metrics import plot_pr_curve, precision_recall_auc
 from tqdm import tqdm
 
 from datasets.image_folder import ImageFolderDataset
 from gan.losses import BinaryCrossEntropyLoss, LogisticNSLoss, NonSatLogisticLoss, WassersteinLoss
-from metrics import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from summary_writers.file_system import SummaryWriter

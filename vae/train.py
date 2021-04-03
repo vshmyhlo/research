@@ -1,18 +1,19 @@
 import argparse
-import utils
-import torch.nn.functional as F
-import os
-from ticpfptp.metrics import Mean
-from dataset import Dataset
-import torch.utils.data
-import torch
 import logging
-from tqdm import tqdm
-from ticpfptp.format import args_to_string
-from ticpfptp.torch import fix_seed
-from vae.model import Encoder, Decoder
-from tensorboardX import SummaryWriter
+import os
 
+import torch
+import torch.nn.functional as F
+import torch.utils.data
+from dataset import Dataset
+from tensorboardX import SummaryWriter
+from ticpfptp.format import args_to_string
+from ticpfptp.metrics import Mean
+from ticpfptp.torch import fix_seed
+from tqdm import tqdm
+
+import utils
+from vae.model import Decoder, Encoder
 
 # TODO: spherical z
 # TODO: spherical interpolation
@@ -22,16 +23,16 @@ from tensorboardX import SummaryWriter
 
 def build_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--experiment-path', type=str, default='./tf_log')
-    parser.add_argument('--restore-path', type=str)
-    parser.add_argument('--dataset-path', type=str, default='./data')
-    parser.add_argument('--learning-rate', type=float, default=5e-5)
-    parser.add_argument('--model-size', type=int, default=32)
-    parser.add_argument('--latent-size', type=int, default=128)
-    parser.add_argument('--batch-size', type=int, default=32)
+    parser.add_argument("--experiment-path", type=str, default="./tf_log")
+    parser.add_argument("--restore-path", type=str)
+    parser.add_argument("--dataset-path", type=str, default="./data")
+    parser.add_argument("--learning-rate", type=float, default=5e-5)
+    parser.add_argument("--model-size", type=int, default=32)
+    parser.add_argument("--latent-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=32)
     # parser.add_argument('--opt', type=str, choices=['adam', 'momentum'], default='momentum')
-    parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--seed", type=int, default=42)
 
     return parser
 
@@ -47,7 +48,8 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=os.cpu_count(),
-        drop_last=True)
+        drop_last=True,
+    )
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     encoder = Encoder(args.model_size, args.latent_size)
@@ -55,18 +57,18 @@ def main():
     encoder.to(device)
     decoder.to(device)
 
-    opt = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.learning_rate)
+    opt = torch.optim.Adam(
+        list(encoder.parameters()) + list(decoder.parameters()), lr=args.learning_rate
+    )
     noise_dist = torch.distributions.Normal(0, 1)
 
     writer = SummaryWriter(args.experiment_path)
-    metrics = {
-        'loss': Mean()
-    }
+    metrics = {"loss": Mean()}
 
     for epoch in range(args.epochs):
         encoder.train()
         decoder.train()
-        for real, _ in tqdm(data_loader, desc='epoch {} training'.format(epoch)):
+        for real, _ in tqdm(data_loader, desc="epoch {} training".format(epoch)):
             real = real.to(device)
 
             mean, log_var = encoder(real)
@@ -76,18 +78,18 @@ def main():
 
             # TODO: loss (reconstruction, summing, mean)
             mse = F.mse_loss(input=fake, target=real)
-            kld = -0.5 * (1 + log_var - mean**2 - log_var.exp()).sum(-1)
+            kld = -0.5 * (1 + log_var - mean ** 2 - log_var.exp()).sum(-1)
             loss = mse.mean() + kld.mean()
-            metrics['loss'].update(loss.data.cpu().numpy())
+            metrics["loss"].update(loss.data.cpu().numpy())
 
             opt.zero_grad()
             loss.mean().backward()
             opt.step()
 
-        writer.add_scalar('loss', metrics['loss'].compute_and_reset(), global_step=epoch)
-        writer.add_image('real', utils.make_grid((real + 1) / 2), global_step=epoch)
-        writer.add_image('fake', utils.make_grid((fake + 1) / 2), global_step=epoch)
+        writer.add_scalar("loss", metrics["loss"].compute_and_reset(), global_step=epoch)
+        writer.add_image("real", utils.make_grid((real + 1) / 2), global_step=epoch)
+        writer.add_image("fake", utils.make_grid((fake + 1) / 2), global_step=epoch)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

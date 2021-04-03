@@ -9,8 +9,12 @@ from PIL import Image
 
 class Vimeo90kDataset(torch.utils.data.Dataset):
     def __init__(self, path, subset, transform=None):
-        self.data = pd.read_csv(os.path.join(path, 'tri_{}list.txt'.format(subset)), names=['folder'])
-        self.data['folder'] = self.data['folder'].apply(lambda folder: os.path.join(path, 'sequences', folder))
+        self.data = pd.read_csv(
+            os.path.join(path, "tri_{}list.txt".format(subset)), names=["folder"]
+        )
+        self.data["folder"] = self.data["folder"].apply(
+            lambda folder: os.path.join(path, "sequences", folder)
+        )
         self.data.index = range(len(self.data))
         self.transform = transform
 
@@ -18,8 +22,8 @@ class Vimeo90kDataset(torch.utils.data.Dataset):
         return len(self.data)
 
     def __getitem__(self, i):
-        images = self.data.loc[i]['folder']
-        images = [os.path.join(images, 'im{}.png'.format(n)) for n in [1, 2, 3]]
+        images = self.data.loc[i]["folder"]
+        images = [os.path.join(images, "im{}.png".format(n)) for n in [1, 2, 3]]
         images = [Image.open(image) for image in images]
 
         if self.transform is not None:
@@ -32,10 +36,12 @@ class MiddleburyDataset(torch.utils.data.Dataset):
     def __init__(self, path, video, transform=None):
         self.data = sorted(os.listdir(os.path.join(path, video)))
         self.data = [os.path.join(path, video, image) for image in self.data]
-        self.data = pd.DataFrame({
-            'image_1': self.data[:-1],
-            'image_3': self.data[1:],
-        })
+        self.data = pd.DataFrame(
+            {
+                "image_1": self.data[:-1],
+                "image_3": self.data[1:],
+            }
+        )
         self.data.index = range(len(self.data))
         self.transform = transform
 
@@ -44,7 +50,7 @@ class MiddleburyDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         images = self.data.loc[i]
-        images = [images['image_{}'.format(i)] for i in [1, 3]]
+        images = [images["image_{}".format(i)] for i in [1, 3]]
         images = [Image.open(image) for image in images]
 
         if self.transform is not None:
