@@ -221,27 +221,26 @@ def main(config_path, **kwargs):
                 with zero_grad_and_step(opt_gen):
                     # path length regularization
                     noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
-                    # fake, w = gen(noise)
-                    # # w = w.transpose(0, 1)
-                    # validate_shape(w, (None, config.batch_size, config.noise_size))
-                    # pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
-                    # (pl_grads,) = torch.autograd.grad(
-                    #     outputs=[(fake * pl_noise).sum()],
-                    #     inputs=[w],
-                    #     create_graph=True,
-                    #     only_inputs=True,
-                    # )
-                    # print(pl_grads.shape)
-                    # pl_lengths = pl_grads.square().sum(2).mean(0).sqrt()
-                    # print(pl_lengths.shape)
-                    # pl_mean = self_pl_mean.lerp(pl_lengths.mean(), config.gen.pl_decay)
-                    # print(pl_mean.shape)
-                    # self_pl_mean.copy_(pl_mean.detach())
-                    # print(self_pl_mean.shape)
-                    # fail
-                    # pl_penalty = (pl_lengths - pl_mean).square()
-                    # loss_pl = pl_penalty * config.gen.pl_weight * config.gen.reg_interval
-                    # loss_pl.mean().backward()
+                    fake, w = gen(noise)
+                    # w = w.transpose(0, 1)
+                    validate_shape(w, (None, config.batch_size, config.noise_size))
+                    pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
+                    (pl_grads,) = torch.autograd.grad(
+                        outputs=[(fake * pl_noise).sum()],
+                        inputs=[w],
+                        create_graph=True,
+                        only_inputs=True,
+                    )
+                    print(pl_grads.shape)
+                    pl_lengths = pl_grads.square().sum(2).mean(0).sqrt()
+                    print(pl_lengths.shape)
+                    pl_mean = self_pl_mean.lerp(pl_lengths.mean(), config.gen.pl_decay)
+                    print(pl_mean.shape)
+                    self_pl_mean.copy_(pl_mean.detach())
+                    print(self_pl_mean.shape)
+                    pl_penalty = (pl_lengths - pl_mean).square()
+                    loss_pl = pl_penalty * config.gen.pl_weight * config.gen.reg_interval
+                    loss_pl.mean().backward()
 
             # generator: update moving average
             ema.update(gen)
