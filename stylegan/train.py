@@ -232,13 +232,9 @@ def main(config_path, **kwargs):
                         create_graph=True,
                         only_inputs=True,
                     )
-                    # print(pl_grads.shape)
                     pl_lengths = pl_grads.square().sum(2).mean(0).sqrt()
-                    # print(pl_lengths.shape)
                     pl_mean = pl_ema.lerp(pl_lengths.mean(), config.gen.pl_decay)
-                    # print(pl_mean.shape)
                     pl_ema.copy_(pl_mean.detach())
-                    # print(pl_ema.shape)
                     pl_penalty = (pl_lengths - pl_mean).square()
                     loss_pl = pl_penalty * config.gen.pl_weight * config.gen.reg_interval
                     loss_pl.mean().backward()
