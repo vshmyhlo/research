@@ -329,6 +329,7 @@ def main(config_path, **kwargs):
                     "dsc": dsc.state_dict(),
                     "opt_gen": opt_gen.state_dict(),
                     "opt_dsc": opt_dsc.state_dict(),
+                    "pl_mean": self_pl_mean,
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
