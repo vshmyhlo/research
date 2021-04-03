@@ -31,7 +31,7 @@ config = C(
         max_channels=noise_size,
         reg_interval=8,
         pl_decay=0.01,
-        pl_weight=2,
+        pl_weight=1,  # TODO:
         ema=0.999,
     ),
 )
