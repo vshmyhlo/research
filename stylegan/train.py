@@ -160,7 +160,7 @@ def main(config_path, **kwargs):
         gen_ema.load_state_dict(state["gen_ema"])
         opt_gen.load_state_dict(state["opt_gen"])
         opt_dsc.load_state_dict(state["opt_dsc"])
-        # pl_ema.copy_(state["pl_ema"])
+        pl_ema.copy_(state["pl_ema"])
         print("restored from checkpoint")
 
     dataset = build_dataset(config)
