@@ -33,10 +33,10 @@ Image Classification
 * [Image Classification](./classification)
 * [DenseNet](https://github.com/v-shmyhlo/densenet-tensorflow) (TensorFlow)
 * [ResNet, ResNeXt, DenseNet, MobileNetV2, FPN](https://github.com/v-shmyhlo/baselines)
-* [TODO](https://github.com/v-shmyhlo/segmentation-tensorflow)
 
 Image Segmentation
 * [Semantic Segmentation](./segmentation)
+* [TODO](https://github.com/v-shmyhlo/segmentation-tensorflow)
 
 Similarity and Metric Learning
 * [Similarity and Metric Learning](https://github.com/v-shmyhlo/similarity-learning)

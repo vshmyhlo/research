@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 
 import click
@@ -200,7 +201,7 @@ def main(config_path, **kwargs):
             with zero_grad_and_step(opt_gen):
                 if config.debug:
                     print("gen")
-                noise = noise_dist.sample((real.size(0), config.noise_size)).to(DEVICE)
+                noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                 fake = gen(noise)
                 assert (
                     fake.size() == real.size()
@@ -213,9 +214,23 @@ def main(config_path, **kwargs):
                 metrics["gen/loss"].update(loss.detach())
 
             # generator: regularize
-            # if batch_i % config.gen.reg_interval == 0:
-            #     with zero_grad_and_step(opt_gen):
-            #         pass
+            if batch_i % config.gen.reg_interval == 0:
+                with zero_grad_and_step(opt_gen):
+                    noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
+                    fake, gen_ws = gen(noise)
+                    pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
+                    (pl_grads,) = torch.autograd.grad(
+                        outputs=[(fake * pl_noise).sum()],
+                        inputs=[gen_ws],
+                        create_graph=True,
+                        only_inputs=True,
+                    )
+                    pl_lengths = pl_grads.square().sum(2).mean(1).sqrt()
+                    pl_mean = self.pl_mean.lerp(pl_lengths.mean(), self.pl_decay)
+                    self.pl_mean.copy_(pl_mean.detach())
+                    pl_penalty = (pl_lengths - pl_mean).square()
+                    loss_pl = pl_penalty * self.pl_weight
+                    loss_pl.mean().backward()
 
             # generator: update moving average
             ema.update(gen)
@@ -224,7 +239,7 @@ def main(config_path, **kwargs):
             with zero_grad_and_step(opt_dsc):
                 if config.debug:
                     print("dsc")
-                noise = noise_dist.sample((real.size(0), config.noise_size)).to(DEVICE)
+                noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                 with torch.no_grad():
                     fake = gen(noise)
                     assert (
