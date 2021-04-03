@@ -148,7 +148,7 @@ def main(config_path, **kwargs):
     ).to(DEVICE)
     gen_ema = copy.deepcopy(gen)
     ema = ModuleEMA(gen_ema, config.gen.ema)
-    self_pl_mean = torch.zeros([], device=DEVICE)
+    pl_ema = torch.zeros([], device=DEVICE)
 
     opt_gen = build_optimizer(gen.parameters(), config)
     opt_dsc = build_optimizer(dsc.parameters(), config)
@@ -160,6 +160,7 @@ def main(config_path, **kwargs):
         gen_ema.load_state_dict(state["gen_ema"])
         opt_gen.load_state_dict(state["opt_gen"])
         opt_dsc.load_state_dict(state["opt_dsc"])
+        # pl_ema.copy_(state["pl_ema"])
         print("restored from checkpoint")
 
     dataset = build_dataset(config)
@@ -231,13 +232,13 @@ def main(config_path, **kwargs):
                         create_graph=True,
                         only_inputs=True,
                     )
-                    print(pl_grads.shape)
+                    # print(pl_grads.shape)
                     pl_lengths = pl_grads.square().sum(2).mean(0).sqrt()
-                    print(pl_lengths.shape)
-                    pl_mean = self_pl_mean.lerp(pl_lengths.mean(), config.gen.pl_decay)
-                    print(pl_mean.shape)
-                    self_pl_mean.copy_(pl_mean.detach())
-                    print(self_pl_mean.shape)
+                    # print(pl_lengths.shape)
+                    pl_mean = pl_ema.lerp(pl_lengths.mean(), config.gen.pl_decay)
+                    # print(pl_mean.shape)
+                    pl_ema.copy_(pl_mean.detach())
+                    # print(pl_ema.shape)
                     pl_penalty = (pl_lengths - pl_mean).square()
                     loss_pl = pl_penalty * config.gen.pl_weight * config.gen.reg_interval
                     loss_pl.mean().backward()
@@ -329,7 +330,7 @@ def main(config_path, **kwargs):
                     "dsc": dsc.state_dict(),
                     "opt_gen": opt_gen.state_dict(),
                     "opt_dsc": opt_dsc.state_dict(),
-                    "pl_mean": self_pl_mean,
+                    "pl_ema": pl_ema,
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
