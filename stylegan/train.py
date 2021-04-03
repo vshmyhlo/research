@@ -1,5 +1,4 @@
 import copy
-from utils import validate_shape
 import math
 import os
 
@@ -20,7 +19,7 @@ from precision_recall import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from summary_writers.file_system import SummaryWriter
-from utils import compute_nrow, zero_grad_and_step
+from utils import compute_nrow, validate_shape, zero_grad_and_step
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
@@ -223,7 +222,7 @@ def main(config_path, **kwargs):
                     # path length regularization
                     noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                     fake, w = gen(noise)
-                    w = w.swapaxes(0, 1)
+                    w = w.transpose(0, 1)
                     validate_shape(w, (config.batch_size, None, config.noise_size))
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
