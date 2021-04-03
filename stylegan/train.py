@@ -277,10 +277,10 @@ def main(config_path, **kwargs):
                     # R1 regularization
                     real = real.detach().requires_grad_(True)
                     logits = dsc(real)
-                    (real_grads,) = torch.autograd.grad(
+                    (r1_grads,) = torch.autograd.grad(
                         outputs=[logits.sum()], inputs=[real], create_graph=True, only_inputs=True
                     )
-                    r1_penalty = real_grads.square().sum([1, 2, 3])
+                    r1_penalty = r1_grads.square().sum([1, 2, 3])
                     loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
