@@ -9,7 +9,6 @@ config = C(
     batch_size=32,
     image_size=256,
     noise_size=noise_size,
-    r1_gamma=10,
     opt=C(
         type="adam",
         args=C(
@@ -23,6 +22,7 @@ config = C(
         base_channels=32,
         max_channels=noise_size,
         reg_interval=16,
+        r1_gamma=10,
         batch_std=8,
     ),
     gen=C(
@@ -30,6 +30,8 @@ config = C(
         base_channels=32,
         max_channels=noise_size,
         reg_interval=8,
+        pl_decay=0.01,
+        pl_weight=2,
         ema=0.999,
     ),
 )

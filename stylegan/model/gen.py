@@ -61,6 +61,7 @@ class Gen(nn.Module):
             w2 = z_to_w(z2)
             w = style_mixing(w, w2)
 
+        w_stack = w
         w = list(w.unbind(0))
         assert len(w) == self.num_layers
 
@@ -74,7 +75,7 @@ class Gen(nn.Module):
 
         assert len(w) == 0
 
-        return image
+        return image, w_stack
 
 
 class ToRGB(nn.Module):

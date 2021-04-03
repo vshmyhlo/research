@@ -30,6 +30,7 @@ torch.backends.cudnn.benchmark = True
 # TODO: check ema beta computation
 # TODO: visualize noise maps
 # TODO: test style-mixing code
+# TODO: style-mixing prob usage (0.9)
 # TODO: review minibatch-std
 # TODO: check style mixing layer ordering
 # TODO: check https://github.com/NVlabs/stylegan2-ada/blob/main/training/networks.py
@@ -202,7 +203,7 @@ def main(config_path, **kwargs):
                 if config.debug:
                     print("gen")
                 noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
-                fake = gen(noise)
+                fake, _ = gen(noise)
                 assert (
                     fake.size() == real.size()
                 ), "fake size {} does not match real size {}".format(fake.size(), real.size())
@@ -216,20 +217,24 @@ def main(config_path, **kwargs):
             # generator: regularize
             if batch_i % config.gen.reg_interval == 0:
                 with zero_grad_and_step(opt_gen):
+                    # path length regularization
                     noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
-                    fake, gen_ws = gen(noise)
+                    fake, w = gen(noise)
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
                         outputs=[(fake * pl_noise).sum()],
-                        inputs=[gen_ws],
+                        inputs=[w],
                         create_graph=True,
                         only_inputs=True,
                     )
+                    print(pl_grads.shape)
                     pl_lengths = pl_grads.square().sum(2).mean(1).sqrt()
-                    pl_mean = self.pl_mean.lerp(pl_lengths.mean(), self.pl_decay)
+                    print(pl_lengths.shape)
+                    fail
+                    pl_mean = self.pl_mean.lerp(pl_lengths.mean(), config.gen.pl_decay)
                     self.pl_mean.copy_(pl_mean.detach())
                     pl_penalty = (pl_lengths - pl_mean).square()
-                    loss_pl = pl_penalty * self.pl_weight
+                    loss_pl = pl_penalty * config.gen.pl_weight * config.gen.reg_interval
                     loss_pl.mean().backward()
 
             # generator: update moving average
@@ -241,7 +246,7 @@ def main(config_path, **kwargs):
                     print("dsc")
                 noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                 with torch.no_grad():
-                    fake = gen(noise)
+                    fake, _ = gen(noise)
                     assert (
                         fake.size() == real.size()
                     ), "fake size {} does not match real size {}".format(fake.size(), real.size())
@@ -274,15 +279,15 @@ def main(config_path, **kwargs):
                         outputs=[logits.sum()], inputs=[real], create_graph=True, only_inputs=True
                     )
                     r1_penalty = real_grads.square().sum([1, 2, 3])
-                    loss_r1 = r1_penalty * (config.r1_gamma * 0.5) * config.dsc.reg_interval
+                    loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
         dsc.eval()
         gen.eval()
         gen_ema.eval()
         with torch.no_grad():
-            fake = gen(noise_fixed)
-            fake_ema = gen_ema(noise_fixed)
+            fake, _ = gen(noise_fixed)
+            fake_ema, _ = gen_ema(noise_fixed)
             real, fake, fake_ema = [denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema]]
 
             dsc_logits = dsc_logits.compute_and_reset().data.cpu().numpy()
