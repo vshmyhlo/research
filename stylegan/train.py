@@ -222,8 +222,8 @@ def main(config_path, **kwargs):
                     # path length regularization
                     noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                     fake, w = gen(noise)
-                    w = w.transpose(0, 1)
-                    validate_shape(w, (config.batch_size, None, config.noise_size))
+                    # w = w.transpose(0, 1)
+                    validate_shape(w, (None, config.batch_size, config.noise_size))
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
                         outputs=[(fake * pl_noise).sum()],
