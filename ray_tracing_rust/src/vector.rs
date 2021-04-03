@@ -12,9 +12,7 @@ pub struct Vector3 {
     pub x: f32,
     pub y: f32,
     pub z: f32,
-
 }
-
 
 impl Vector3 {
     pub fn round(self) -> Self {
@@ -24,7 +22,6 @@ impl Vector3 {
             z: self.z.round(),
         }
     }
-
 
     pub fn normalize(self) -> Self {
         self / self.norm()
@@ -42,7 +39,6 @@ impl Vector3 {
         v - n * 2. * v.dot(n)
     }
 
-
     pub fn random_unit() -> Self {
         let mut rng = rand::thread_rng();
         let dist = Uniform::new(-1_f32, 1_f32);
@@ -51,9 +47,9 @@ impl Vector3 {
             x: rng.sample(dist),
             y: rng.sample(dist),
             z: rng.sample(dist),
-        }.normalize()
+        }
+        .normalize()
     }
-
 
     pub fn random_in_hemisphere(n: Vector3) -> Vector3 {
         let v = Self::random_unit();
@@ -65,7 +61,6 @@ impl Vector3 {
         }
     }
 }
-
 
 impl Add<Self> for Vector3 {
     type Output = Self;
@@ -90,7 +85,6 @@ impl Add<f32> for Vector3 {
         }
     }
 }
-
 
 impl Sub<Self> for Vector3 {
     type Output = Self;
@@ -184,5 +178,3 @@ impl Zero for Vector3 {
         return self.x.is_zero() && self.y.is_zero() && self.z.is_zero();
     }
 }
-
-

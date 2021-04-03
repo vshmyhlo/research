@@ -16,6 +16,7 @@ Machine Translation
 
 Generative Models
 * [StyleGAN2](./stylegan) (PyTorch)
+* [CycleGAN](./cycle_gan) (PyTorch)
 * [VAE](./vae) (PyTorch)
 
 Semi and Self-Supervised Learning
@@ -23,6 +24,7 @@ Semi and Self-Supervised Learning
 * [Meta Pseudo Labels](./mpl_tf) (TensorFlow, TwoMoons dataset)
 * [Meta Pseudo Labels](./mpl_torch) (PyTorch, CIFAR-10 SSL)
 * [MixMatch](./mix_match) 
+* [FixMatch](./fix_match) 
 
 Video Frame Rate Enhancement
 * [Video Frame Interpolation via Residue Refinement (RRIN)](./rrin)

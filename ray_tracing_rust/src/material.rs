@@ -8,7 +8,6 @@ pub trait Material {
     fn emit(&self) -> Color;
 }
 
-
 pub struct Light {
     color: Color,
 
@@ -60,12 +59,10 @@ impl Material for Metal {
     }
 }
 
-
 pub struct Diffuse {
     color: Color,
 
     _secret: (),
-
 }
 
 impl Diffuse {
@@ -85,4 +82,3 @@ impl Material for Diffuse {
         Color::black()
     }
 }
-

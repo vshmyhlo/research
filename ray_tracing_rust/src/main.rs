@@ -3,8 +3,8 @@ extern crate image;
 extern crate num;
 extern crate rand;
 
-use clap::{App, Arg};
 use clap::clap_app;
+use clap::{App, Arg};
 use image::{ImageBuffer, RgbImage};
 use rand::Rng;
 
@@ -18,56 +18,109 @@ use vector::Vector3;
 use crate::material::{Diffuse, Light, Metal};
 use crate::object::Object;
 
+mod camera;
+mod color;
+mod intersection;
+mod material;
+mod object;
+mod object_list;
 mod ray;
+mod reflection;
 mod traits;
 mod vector;
-mod object_list;
-mod object;
-mod color;
-mod camera;
-mod material;
-mod reflection;
-mod intersection;
 
-const BACKGROUND_COLOR: Color = Vector3 { x: 0.4, y: 0.4, z: 0.4 };
+const BACKGROUND_COLOR: Color = Vector3 {
+    x: 0.4,
+    y: 0.4,
+    z: 0.4,
+};
 
 fn main() {
     let matches = clap_app!(app =>
         (@arg size: --size +takes_value)
         (@arg rep: --rep +takes_value)
-    ).get_matches();
+    )
+    .get_matches();
 
     let size: u32 = matches.value_of_t("size").unwrap();
     let rep: u32 = matches.value_of_t("rep").unwrap();
 
     let mut image: RgbImage = ImageBuffer::new(size, size);
     let mut rng = rand::thread_rng();
-    let camera = Camera::new(Vector3 { x: 0., y: 0., z: -1. });
+    let camera = Camera::new(Vector3 {
+        x: 0.,
+        y: 0.,
+        z: -1.,
+    });
 
     let objects: Vec<Box<Object>> = vec![
         Box::new(Sphere::new(
-            Vector3 { x: 0., y: -101., z: 5. },
+            Vector3 {
+                x: 0.,
+                y: -101.,
+                z: 5.,
+            },
             100.,
-            Diffuse::new(Vector3 { x: 1., y: 1., z: 0. }))),
+            Diffuse::new(Vector3 {
+                x: 1.,
+                y: 1.,
+                z: 0.,
+            }),
+        )),
         Box::new(Sphere::new(
-            Vector3 { x: -2.5, y: 0., z: 5. },
+            Vector3 {
+                x: -2.5,
+                y: 0.,
+                z: 5.,
+            },
             1.,
-            Light::new(Vector3 { x: 0., y: 1., z: 1. }))),
+            Light::new(Vector3 {
+                x: 0.,
+                y: 1.,
+                z: 1.,
+            }),
+        )),
         Box::new(Sphere::new(
-            Vector3 { x: 2.5, y: 0., z: 5. },
+            Vector3 {
+                x: 2.5,
+                y: 0.,
+                z: 5.,
+            },
             1.,
-            Light::new(Vector3 { x: 1., y: 1., z: 1. }))),
+            Light::new(Vector3 {
+                x: 1.,
+                y: 1.,
+                z: 1.,
+            }),
+        )),
         Box::new(Sphere::new(
-            Vector3 { x: 0., y: 0., z: 5. },
+            Vector3 {
+                x: 0.,
+                y: 0.,
+                z: 5.,
+            },
             1.,
-            Metal::new(Vector3 { x: 0.5, y: 0.5, z: 0.5 }))),
+            Metal::new(Vector3 {
+                x: 0.5,
+                y: 0.5,
+                z: 0.5,
+            }),
+        )),
         Box::new(Sphere::new(
-            Vector3 { x: 0., y: 2.5, z: 5. },
+            Vector3 {
+                x: 0.,
+                y: 2.5,
+                z: 5.,
+            },
             1.,
-            Diffuse::new(Vector3 { x: 1., y: 0., z: 1. })))
+            Diffuse::new(Vector3 {
+                x: 1.,
+                y: 0.,
+                z: 1.,
+            }),
+        )),
     ];
     let objects = ObjectList::new(objects);
-
 
     for x in 0..size {
         for y in 0..size {
@@ -84,10 +137,8 @@ fn main() {
         }
     }
 
-
-    image.save("./output.png").unwrap();
+    image.save("./data/output.png").unwrap();
 }
-
 
 fn trace_ray(ray: &Ray, objects: &ObjectList, max_depth: u32) -> Color {
     if max_depth == 0 {
@@ -101,11 +152,19 @@ fn trace_ray(ray: &Ray, objects: &ObjectList, max_depth: u32) -> Color {
             let normal = intersection.object.normal_at(position);
 
             let emitted = intersection.object.get_material().emit();
-            let reflection = intersection.object.get_material().reflect(ray, intersection.t, normal);
+            let reflection =
+                intersection
+                    .object
+                    .get_material()
+                    .reflect(ray, intersection.t, normal);
 
             match reflection {
                 None => emitted,
-                Some(reflection) => emitted + reflection.attenuation * trace_ray(&reflection.ray, objects, max_depth - 1)
+                Some(reflection) => {
+                    emitted
+                        + reflection.attenuation
+                            * trace_ray(&reflection.ray, objects, max_depth - 1)
+                }
             }
         }
     }

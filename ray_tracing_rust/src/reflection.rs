@@ -10,6 +10,10 @@ pub struct Reflection {
 
 impl Reflection {
     pub fn new(ray: Ray, attenuation: Vector3) -> Self {
-        Self { ray, attenuation, _secret: () }
+        Self {
+            ray,
+            attenuation,
+            _secret: (),
+        }
     }
 }

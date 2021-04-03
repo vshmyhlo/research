@@ -8,21 +8,32 @@ pub trait Object {
     fn intersects(&self, ray: &Ray) -> Option<f32>;
 }
 
-
-pub struct Sphere<M> where M: Material {
+pub struct Sphere<M>
+where
+    M: Material,
+{
     center: Vector3,
     radius: f32,
     material: M,
 }
 
-
-impl<M> Sphere<M> where M: Material {
+impl<M> Sphere<M>
+where
+    M: Material,
+{
     pub fn new(center: Vector3, radius: f32, material: M) -> Self {
-        Self { center, radius, material }
+        Self {
+            center,
+            radius,
+            material,
+        }
     }
 }
 
-impl<M> Object for Sphere<M> where M: Material {
+impl<M> Object for Sphere<M>
+where
+    M: Material,
+{
     fn normal_at(&self, position: Vector3) -> Vector3 {
         (position - self.center).normalize()
     }
@@ -51,19 +62,19 @@ impl<M> Object for Sphere<M> where M: Material {
         Some(t)
     }
 
-//    sr = ray.origin - self.center
-//
-//    a = torch.dot(ray.direction, ray.direction)
-//    b = 2 * torch.dot(ray.direction, sr)
-//    c = torch.dot(sr, sr) - self.radius**2
-//
-//    disc = b**2 - 4 * a * c
-//    if disc < 0:
-//    return None
-//
-//    t = (-b - torch.sqrt(disc)) / (2 * a)
-//    if t <= 0:
-//    return None
-//
-//    return t
+    //    sr = ray.origin - self.center
+    //
+    //    a = torch.dot(ray.direction, ray.direction)
+    //    b = 2 * torch.dot(ray.direction, sr)
+    //    c = torch.dot(sr, sr) - self.radius**2
+    //
+    //    disc = b**2 - 4 * a * c
+    //    if disc < 0:
+    //    return None
+    //
+    //    t = (-b - torch.sqrt(disc)) / (2 * a)
+    //    if t <= 0:
+    //    return None
+    //
+    //    return t
 }

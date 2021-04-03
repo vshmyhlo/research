@@ -4,15 +4,13 @@ use crate::object::Object;
 use crate::ray::Ray;
 
 pub struct ObjectList {
-    objects: Vec<Box<Object>>
+    objects: Vec<Box<Object>>,
 }
-
 
 impl ObjectList {
     pub fn new(objects: Vec<Box<Object>>) -> Self {
         ObjectList { objects }
     }
-
 
     pub fn intersects(&self, ray: &Ray) -> Option<Intersection> {
         self.objects
@@ -22,4 +20,3 @@ impl ObjectList {
             .min_by(|a, b| a.t.partial_cmp(&b.t).unwrap())
     }
 }
-
