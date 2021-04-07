@@ -36,7 +36,7 @@ Image Classification
 
 Image Segmentation
 * [Semantic Segmentation](./segmentation)
-* [TODO](https://github.com/v-shmyhlo/segmentation-tensorflow)
+* [(TODO)](https://github.com/v-shmyhlo/segmentation-tensorflow)
 
 Similarity and Metric Learning
 * [Similarity and Metric Learning](https://github.com/v-shmyhlo/similarity-learning)

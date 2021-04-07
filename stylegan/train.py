@@ -25,6 +25,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: review dsc and gen regularization code
 # TODO: pl-weight and pl-batch-frac
 # TODO: GAN metrics: FID, IS, PR
 # TODO: check number of channels in paper
@@ -223,7 +224,6 @@ def main(config_path, **kwargs):
                     # path length regularization
                     noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                     fake, w = gen(noise)
-                    # w = w.transpose(0, 1)
                     validate_shape(w, (None, config.batch_size, config.noise_size))
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
@@ -278,7 +278,10 @@ def main(config_path, **kwargs):
                     real = real.detach().requires_grad_(True)
                     logits = dsc(real)
                     (r1_grads,) = torch.autograd.grad(
-                        outputs=[logits.sum()], inputs=[real], create_graph=True, only_inputs=True
+                        outputs=[logits.sum()],
+                        inputs=[real],
+                        create_graph=True,
+                        only_inputs=True,
                     )
                     r1_penalty = r1_grads.square().sum([1, 2, 3])
                     loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
