@@ -25,6 +25,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: review pl-weight
 # TODO: review dsc and gen regularization code
 # TODO: pl-weight and pl-batch-frac
 # TODO: GAN metrics: FID, IS, PR

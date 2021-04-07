@@ -12,7 +12,7 @@ config = C(
     opt=C(
         type="adam",
         args=C(
-            lr=0.0025,
+            lr=0.002,
             betas=(0.0, 0.99),
             eps=1e-8,
         ),
@@ -23,7 +23,7 @@ config = C(
         max_channels=noise_size,
         reg_interval=16,
         r1_gamma=10,
-        batch_std=8,
+        batch_std=4,
     ),
     gen=C(
         loss="logns",
