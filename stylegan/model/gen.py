@@ -176,7 +176,7 @@ class StyleMixing(nn.Module):
             assert cutoff is None
             cutoff = torch.randint(1, l, size=(1, b), device=w1.device)
         else:
-            cutoff = torch.tensor(cutoff).repeat(b).view(1, b)
+            cutoff = torch.tensor(cutoff, device=w1.device).repeat(b).view(1, b)
 
         mask = (l_index < cutoff).view(l, b, 1)
         mix = torch.where(mask, w1, w2)
