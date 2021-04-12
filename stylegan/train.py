@@ -460,6 +460,7 @@ def visualize_noise(gen, z):
     images = [gen(z)[0] for _ in range(32)]
     images = torch.cat(images, 1)
     images = images.std(1, keepdim=True).repeat(1, 3, 1, 1)
+    images = (images - images.min()) / (images.max() - images.min())
 
     return images
 
