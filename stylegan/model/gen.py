@@ -13,6 +13,7 @@ class Gen(nn.Module):
         super().__init__()
 
         self.mapping = MappingNetwork(z_channels, lr_mul=0.01)
+        self.style_mixing = StyleMixing()
 
         channels = [
             (
@@ -63,12 +64,12 @@ class Gen(nn.Module):
 
             if random.random() < 0.9:  # TODO:
                 w2 = z_to_w(z2)
-                w = style_mixing_random(w1, w2)
+                w = self.style_mixing(w1, w2)
             else:
                 w = w1
         elif z2 is not None:
             w2 = z_to_w(z2)
-            w = style_mixing(w1, w2, cutoff=mix_cutoff)
+            w = self.style_mixing(w1, w2, cutoff=mix_cutoff)
         else:
             w = w1
 
@@ -164,28 +165,24 @@ class BlockLayer(nn.Module):
         return input
 
 
+class StyleMixing(nn.Module):
+    def forward(self, w1, w2, cutoff=None):
+        assert w1.size() == w2.size()
+        l, b, c = w1.size()
+
+        l_index = torch.arange(0, l, device=w1.device).view(l, 1)
+
+        if self.training:
+            assert cutoff is None
+            cutoff = torch.randint(1, l, size=(1, b), device=w1.device)
+        else:
+            cutoff = torch.tensor(cutoff).repeat(b).view(1, b)
+
+        mask = (l_index < cutoff).view(l, b, 1)
+        mix = torch.where(mask, w1, w2)
+
+        return mix
+
+
 def layer_broadcast(input, num_layers):
     return input.unsqueeze(0).repeat(num_layers, 1, 1)
-
-
-def style_mixing(w1, w2, cutoff):
-    assert w1.size() == w2.size()
-    l, b, c = w1.size()
-
-    l_index = torch.arange(0, l, device=w1.device).view(l, 1)
-    mask = (l_index < cutoff).view(l, 1, 1)
-    mix = torch.where(mask, w1, w2)
-
-    return mix
-
-
-def style_mixing_random(w1, w2):
-    assert w1.size() == w2.size()
-    l, b, c = w1.size()
-
-    l_index = torch.arange(0, l, device=w1.device).view(l, 1)
-    cutoff = torch.randint(1, l, size=(1, b), device=w1.device)
-    mask = (l_index < cutoff).view(l, b, 1)
-    mix = torch.where(mask, w1, w2)
-
-    return mix
