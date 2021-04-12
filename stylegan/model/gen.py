@@ -60,13 +60,8 @@ class Gen(nn.Module):
 
         if self.training:
             assert z2 is not None
-            assert mix_cutoff is None
-
-            if random.random() < 0.9:  # TODO:
-                w2 = z_to_w(z2)
-                w = self.style_mixing(w1, w2)
-            else:
-                w = w1
+            w2 = z_to_w(z2)
+            w = self.style_mixing(w1, w2)
         elif z2 is not None:
             w2 = z_to_w(z2)
             w = self.style_mixing(w1, w2, cutoff=mix_cutoff)
@@ -175,11 +170,13 @@ class StyleMixing(nn.Module):
         if self.training:
             assert cutoff is None
             cutoff = torch.randint(1, l, size=(1, b), device=w1.device)
+            mask = (l_index < cutoff).view(l, b, 1)
         else:
-            cutoff = torch.tensor(cutoff, device=w1.device).repeat(b).view(1, b)
+            mask = (l_index < cutoff).view(l, 1, 1)
 
-        mask = (l_index < cutoff).view(l, b, 1)
         mix = torch.where(mask, w1, w2)
+
+        # if random.random() < 0.9:  # TODO:
 
         return mix
 

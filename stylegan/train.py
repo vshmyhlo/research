@@ -287,7 +287,7 @@ def main(config_path, **kwargs):
                     loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
-            break
+            # break
 
         dsc.eval()
         gen.eval()
@@ -337,7 +337,7 @@ def main(config_path, **kwargs):
                 torchvision.utils.make_grid(fake_ema_mix, nrow=fake_ema_mix_nrow),
                 global_step=epoch,
             )
-            break
+            # break
             torch.save(
                 {
                     "gen": gen.state_dict(),
@@ -349,7 +349,7 @@ def main(config_path, **kwargs):
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
-        break
+        # break
 
     writer.flush()
     writer.close()
