@@ -19,6 +19,7 @@ from precision_recall import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from stylegan.model.modules import ZDist
+from utils import log_duration
 from summary_writers.file_system import SummaryWriter
 from utils import compute_nrow, stack_images, validate_shape, zero_grad_and_step
 
@@ -26,24 +27,18 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
-# TODO: noise std viz
-# TODO: style-mix viz
-# TODO: style-mix code 0.9 random
+# TODO: style-mix code 0.9 random check
 # TODO: review pl-weight
 # TODO: review dsc and gen regularization code
 # TODO: pl-weight and pl-batch-frac
 # TODO: GAN metrics: FID, IS, PR
 # TODO: check number of channels in paper
 # TODO: check ema beta computation
-# TODO: visualize noise maps
 # TODO: test style-mixing code
-# TODO: style-mixing prob usage (0.9)
 # TODO: review minibatch-std
 # TODO: check style mixing layer ordering
 # TODO: check https://github.com/NVlabs/stylegan2-ada/blob/main/training/networks.py
 # TODO: larger number of channels
-# TODO: save weights and opt state
-# TODO: path-length regularization
 # TODO: is it ok to use same real for both gen and dsc?
 # TODO: viz rgb contribution
 # TODO: check g_main
@@ -293,7 +288,7 @@ def main(config_path, **kwargs):
         dsc.eval()
         gen.eval()
         gen_ema.eval()
-        with torch.no_grad():
+        with torch.no_grad(), log_duration("visualization took {:.2f} seconds"):
             fake, _ = gen(z_fixed)
             fake_ema, _ = gen_ema(z_fixed)
             fake_ema_mix, fake_ema_mix_nrow = visualize_style_mixing(

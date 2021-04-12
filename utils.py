@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.optim
 import torchvision
 from matplotlib import pyplot as plt
+import time
 
 COLORS = (
     "#1f77b4",
@@ -27,6 +28,13 @@ def zero_grad_and_step(opt):
     opt.zero_grad(set_to_none=True)
     yield
     opt.step()
+
+
+@contextmanager
+def log_duration(message):
+    t = time.time()
+    yield
+    print(message.format(time.time() - t))
 
 
 def compute_nrow(images):
