@@ -65,7 +65,7 @@ class Gen(nn.Module):
             w = style_mixing_random(w1, w2)
         elif z2 is not None:
             w2 = z_to_w(z2)
-            w = style_mixing(w1, w2, mix_cutoff=mix_cutoff)
+            w = style_mixing(w1, w2, cutoff=mix_cutoff)
         else:
             w = w1
 
