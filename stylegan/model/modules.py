@@ -195,3 +195,16 @@ class Bias2d(nn.Module):
 
     def forward(self, input):
         return input + self.bias()
+
+
+class ZDist(nn.Module):
+    def __init__(self, z_size, device):
+        super().__init__()
+
+        self.z_size = z_size
+        self.device = device
+
+    def forward(self, batch_size):
+        z1 = torch.randn(batch_size, self.z_size, device=self.device)
+        z2 = torch.randn(batch_size, self.z_size, device=self.device)
+        return z1, z2

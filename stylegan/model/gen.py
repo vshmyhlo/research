@@ -9,10 +9,9 @@ from stylegan.model.modules import Bias, Bias2d, LeakyReLU, Linear, ModConv2d, N
 
 
 class Gen(nn.Module):
-    def __init__(self, image_size, base_channels, max_channels, z_channels, noise_dist):
+    def __init__(self, image_size, base_channels, max_channels, z_channels):
         super().__init__()
 
-        self.noise_dist = noise_dist
         self.mapping = MappingNetwork(z_channels, lr_mul=0.01)
 
         channels = [
@@ -24,6 +23,7 @@ class Gen(nn.Module):
         ]
         print("Gen", *channels, sep="\n")
         self.num_layers = len(channels) * 3 + 2
+        print("Gen num_layers {}".format(self.num_layers))
 
         self.const = nn.Parameter(torch.empty(1, channels[0][0], 4, 4))
         self.input = nn.ModuleDict(
@@ -48,24 +48,32 @@ class Gen(nn.Module):
     def init(self):
         nn.init.normal_(self.const, 0, 1)
 
-    def forward(self, z):
+    def forward(self, z1, z2=None, mix_cutoff=None):
         def z_to_w(input):
             input = self.mapping(input)
             input = layer_broadcast(input, self.num_layers)
             return input
 
-        w = z_to_w(z)
+        batch_size = z1.size(0)
+        w1 = z_to_w(z1)
 
         if self.training and random.random() < 0.9:  # TODO:
-            z2 = self.noise_dist.sample((z.size(0), z.size(1))).to(z.device)
+            assert z2 is not None
+            assert mix_cutoff is None
+
             w2 = z_to_w(z2)
-            w = style_mixing(w, w2)
+            w = style_mixing_random(w1, w2)
+        elif z2 is not None:
+            w2 = z_to_w(z2)
+            w = style_mixing(w1, w2, mix_cutoff=mix_cutoff)
+        else:
+            w = w1
 
         w_stack = w
         w = list(w.unbind(0))
         assert len(w) == self.num_layers
 
-        input = self.const.repeat(z.size(0), 1, 1, 1)
+        input = self.const.repeat(batch_size, 1, 1, 1)
         input = self.input.conv(input, w.pop(0))
         image = self.input.to_rgb(input, w.pop(0))
 
@@ -157,7 +165,18 @@ def layer_broadcast(input, num_layers):
     return input.unsqueeze(0).repeat(num_layers, 1, 1)
 
 
-def style_mixing(w1, w2):
+def style_mixing(w1, w2, cutoff):
+    assert w1.size() == w2.size()
+    l, b, c = w1.size()
+
+    l_index = torch.arange(0, l, device=w1.device).view(l, 1)
+    mask = (l_index < cutoff).view(l, 1, 1)
+    mix = torch.where(mask, w1, w2)
+
+    return mix
+
+
+def style_mixing_random(w1, w2):
     assert w1.size() == w2.size()
     l, b, c = w1.size()
 

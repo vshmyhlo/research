@@ -18,13 +18,16 @@ from gan.losses import BinaryCrossEntropyLoss, LogisticNSLoss, NonSatLogisticLos
 from precision_recall import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
+from stylegan.model.modules import ZDist
 from summary_writers.file_system import SummaryWriter
-from utils import compute_nrow, validate_shape, zero_grad_and_step
+from utils import compute_nrow, stack_images, validate_shape, zero_grad_and_step
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: style-mix viz
+# TODO: style-mix code 0.9 random
 # TODO: review pl-weight
 # TODO: review dsc and gen regularization code
 # TODO: pl-weight and pl-batch-frac
@@ -134,13 +137,12 @@ generator.
 def main(config_path, **kwargs):
     config = load_config(config_path, **kwargs)
 
-    noise_dist = torch.distributions.Normal(0, 1)
+    z_dist = ZDist(config.noise_size, DEVICE)
     gen = Gen(
         image_size=config.image_size,
         base_channels=config.gen.base_channels,
         max_channels=config.gen.max_channels,
         z_channels=config.noise_size,
-        noise_dist=noise_dist,
     ).to(DEVICE)
     dsc = Dsc(
         image_size=config.image_size,
@@ -177,7 +179,7 @@ def main(config_path, **kwargs):
     )
     data_loader = ChunkedDataLoader(data_loader, config.batches_in_epoch)
 
-    noise_fixed = noise_dist.sample((8 ** 2, config.noise_size)).to(DEVICE)
+    z1_fixed, z2_fixed = z_dist.sample(8 ** 2)
     dsc_compute_loss, gen_compute_loss = build_loss(config)
 
     writer = SummaryWriter(config.experiment_path)
@@ -207,8 +209,7 @@ def main(config_path, **kwargs):
             with zero_grad_and_step(opt_gen):
                 if config.debug:
                     print("gen")
-                noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
-                fake, _ = gen(noise)
+                fake, _ = gen(*z_dist.sample(config.batch_size))
                 assert (
                     fake.size() == real.size()
                 ), "fake size {} does not match real size {}".format(fake.size(), real.size())
@@ -223,8 +224,7 @@ def main(config_path, **kwargs):
             if batch_i % config.gen.reg_interval == 0:
                 with zero_grad_and_step(opt_gen):
                     # path length regularization
-                    noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
-                    fake, w = gen(noise)
+                    fake, w = gen(*z_dist.sample(config.batch_size))
                     validate_shape(w, (None, config.batch_size, config.noise_size))
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
@@ -247,9 +247,8 @@ def main(config_path, **kwargs):
             with zero_grad_and_step(opt_dsc):
                 if config.debug:
                     print("dsc")
-                noise = noise_dist.sample((config.batch_size, config.noise_size)).to(DEVICE)
                 with torch.no_grad():
-                    fake, _ = gen(noise)
+                    fake, _ = gen(*z_dist.sample(config.batch_size))
                     assert (
                         fake.size() == real.size()
                     ), "fake size {} does not match real size {}".format(fake.size(), real.size())
@@ -292,9 +291,19 @@ def main(config_path, **kwargs):
         gen.eval()
         gen_ema.eval()
         with torch.no_grad():
-            fake, _ = gen(noise_fixed)
-            fake_ema, _ = gen_ema(noise_fixed)
-            real, fake, fake_ema = [denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema]]
+            fake, _ = gen(z1_fixed)
+            fake_ema, _ = gen_ema(z1_fixed)
+            fake_ema_mix, fake_ema_mix_nrow = stack_images(
+                [
+                    gen_ema(z1_fixed[0:8], z2_fixed[8:16], mix_cutoff=cutoff)
+                    for cutoff in reversed(
+                        torch.arange(0, gen_ema.num_layers + 1, gen_ema.num_layers // 5)
+                    )
+                ]
+            )
+            real, fake, fake_ema, fake_ema_mix = [
+                denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema, fake_ema_mix]
+            ]
 
             dsc_logits = dsc_logits.compute_and_reset().data.cpu().numpy()
             dsc_targets = dsc_targets.compute_and_reset().data.cpu().numpy()
@@ -323,6 +332,12 @@ def main(config_path, **kwargs):
                 torchvision.utils.make_grid(fake_ema, nrow=compute_nrow(fake_ema)),
                 global_step=epoch,
             )
+            writer.add_image(
+                "fake_ema_mix",
+                torchvision.utils.make_grid(fake_ema_mix, nrow=fake_ema_mix_nrow),
+                global_step=epoch,
+            )
+            break
             torch.save(
                 {
                     "gen": gen.state_dict(),
@@ -334,6 +349,7 @@ def main(config_path, **kwargs):
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
+        break
 
     writer.flush()
     writer.close()
