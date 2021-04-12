@@ -13,7 +13,7 @@ class Gen(nn.Module):
         super().__init__()
 
         self.mapping = MappingNetwork(z_channels, lr_mul=0.01)
-        self.style_mixing = StyleMixing()
+        self.style_mixing = StyleMixing(0.9)
 
         channels = [
             (
@@ -161,22 +161,25 @@ class BlockLayer(nn.Module):
 
 
 class StyleMixing(nn.Module):
+    def __init__(self, prob):
+        super().__init__()
+
+        self.prob = prob
+
     def forward(self, w1, w2, cutoff=None):
         assert w1.size() == w2.size()
-        l, b, c = w1.size()
+        l, b, _ = w1.size()
 
-        l_index = torch.arange(0, l, device=w1.device).view(l, 1)
+        l_index = torch.arange(0, l, device=w1.device).view(l, 1, 1)
 
         if self.training:
             assert cutoff is None
-            cutoff = torch.randint(1, l, size=(1, b), device=w1.device)
-            mask = (l_index < cutoff).view(l, b, 1)
+            cutoff = torch.randint(1, l, size=(1, b, 1), device=w1.device)
+            mask = (l_index < cutoff) | (torch.rand(1, b, 1) > self.prob)
         else:
-            mask = (l_index < cutoff).view(l, 1, 1)
+            mask = l_index < cutoff
 
         mix = torch.where(mask, w1, w2)
-
-        # if random.random() < 0.9:  # TODO:
 
         return mix
 
