@@ -74,12 +74,10 @@ class Gen(nn.Module):
         input = self.const.repeat(batch_size, 1, 1, 1)
         input = self.input.conv(input, w.pop(0))
         image = self.input.to_rgb(input, w.pop(0))
-        print(image.shape, len(w))
 
         for block in self.blocks:
             input = block.conv(input, w)
             image = self.upsample(image) + block.to_rgb(input, w.pop(0))
-            print(image.shape, len(w))
 
         assert len(w) == 0
 

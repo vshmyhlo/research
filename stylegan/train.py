@@ -306,7 +306,7 @@ def main(config_path, **kwargs):
             # fake_ema_mix, fake_ema_mix_nrow = stack_images(fake_ema_mix)
 
             fake_ema_mix, fake_ema_mix_nrow = visualize_style_mixing(
-                gen_ema, z_fixed[0:8:2], z_fixed[1:8:2]
+                gen_ema, z_fixed[0 : 8 * 2 : 2], z_fixed[1 : 8 * 2 : 2]
             )
 
             real, fake, fake_ema, fake_ema_mix = [
@@ -434,20 +434,20 @@ def build_dataset(config):
     # )
 
 
-def visualize_style_mixing(gen, z1, z2):
-    nrow = z2.size(0) + 1
+def visualize_style_mixing(gen, z_row, z_col):
+    nrow = z_col.size(0) + 1
 
-    image_1, _ = gen(z1)
-    image_2, _ = gen(z2)
+    image_row, _ = gen(z_row)
+    image_col, _ = gen(z_col)
 
     images = [
-        torch.zeros_like(image_1[:1]),
-        image_2,
+        torch.zeros_like(image_col[:1]),
+        image_col,
     ]
-    for i in range(z1.size(0)):
-        images.append(image_1[i : i + 1])
-        for j in range(z2.size(0)):
-            image, _ = gen(z1[i : i + 1], z2[j : j + 1], 4)
+    for i in range(z_row.size(0)):
+        images.append(image_row[i : i + 1])
+        for j in range(z_col.size(0)):
+            image, _ = gen(z_row[i : i + 1], z_col[j : j + 1], 5)
             images.append(image)
 
     images = torch.cat(images, 0)
