@@ -57,12 +57,15 @@ class Gen(nn.Module):
         batch_size = z1.size(0)
         w1 = z_to_w(z1)
 
-        if self.training and random.random() < 0.9:  # TODO:
+        if self.training:
             assert z2 is not None
             assert mix_cutoff is None
 
-            w2 = z_to_w(z2)
-            w = style_mixing_random(w1, w2)
+            if random.random() < 0.9:  # TODO:
+                w2 = z_to_w(z2)
+                w = style_mixing_random(w1, w2)
+            else:
+                w = w1
         elif z2 is not None:
             w2 = z_to_w(z2)
             w = style_mixing(w1, w2, cutoff=mix_cutoff)
