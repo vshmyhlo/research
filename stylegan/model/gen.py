@@ -175,11 +175,11 @@ class StyleMixing(nn.Module):
         if self.training:
             assert cutoff is None
             cutoff = torch.randint(1, l, size=(1, b, 1), device=w1.device)
-            mask = (l_index < cutoff) | (torch.rand(1, b, 1) > self.prob)
+            take_first = (l_index < cutoff) | (torch.rand(1, b, 1, device=w1.device) > self.prob)
         else:
-            mask = l_index < cutoff
+            take_first = l_index < cutoff
 
-        mix = torch.where(mask, w1, w2)
+        mix = torch.where(take_first, w1, w2)
 
         return mix
 
