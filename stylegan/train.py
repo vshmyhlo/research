@@ -305,7 +305,7 @@ def main(config_path, **kwargs):
             fake_ema_noise, fake_ema_noise_nrow = stack_images(
                 [
                     fake_ema[:4],
-                    visualize_noise(gen_ema, z_fixed[:4]),
+                    visualize_noise(gen_ema, z_fixed[:4], 32),
                 ]
             )
 
@@ -456,13 +456,12 @@ def visualize_style_mixing(gen, z_row, z_col):
     return images, nrow
 
 
-def visualize_noise(gen, z):
-    images = [gen(z)[0] for _ in range(32)]
+def visualize_noise(gen, z, num_samples):
+    images = [gen(z)[0] for _ in range(num_samples)]
     images = [denormalize(x).clamp(0, 1) for x in images]
     images = torch.cat(images, 1)
     images = images.std(1, keepdim=True).repeat(1, 3, 1, 1)
-    print(images.min(), images.max())
-    # images = (images - images.min()) / (images.max() - images.min())
+    images = (images - images.min()) / (images.max() - images.min())
 
     return images
 
