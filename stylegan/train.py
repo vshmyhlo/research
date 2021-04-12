@@ -26,6 +26,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
 
 
+# TODO: noise std viz
 # TODO: style-mix viz
 # TODO: style-mix code 0.9 random
 # TODO: review pl-weight
@@ -287,7 +288,7 @@ def main(config_path, **kwargs):
                     loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
-            # break
+            break
 
         dsc.eval()
         gen.eval()
@@ -295,13 +296,19 @@ def main(config_path, **kwargs):
         with torch.no_grad():
             fake, _ = gen(z_fixed)
             fake_ema, _ = gen_ema(z_fixed)
-            fake_ema_mix = [
-                gen_ema(z_fixed[0:8:2])[0],
-                gen_ema(z_fixed[1:8:2])[0],
-            ]
-            for cutoff in reversed(torch.arange(0, gen_ema.num_layers + 1, 1)):
-                fake_ema_mix.append(gen_ema(z_fixed[0:8:2], z_fixed[1:8:2], mix_cutoff=cutoff)[0])
-            fake_ema_mix, fake_ema_mix_nrow = stack_images(fake_ema_mix)
+
+            # fake_ema_mix = [
+            #     gen_ema(z_fixed[0:8:2])[0],
+            #     gen_ema(z_fixed[1:8:2])[0],
+            # ]
+            # for cutoff in reversed(torch.arange(0, gen_ema.num_layers + 1, 1)):
+            #     fake_ema_mix.append(gen_ema(z_fixed[0:8:2], z_fixed[1:8:2], mix_cutoff=cutoff)[0])
+            # fake_ema_mix, fake_ema_mix_nrow = stack_images(fake_ema_mix)
+
+            fake_ema_mix, fake_ema_mix_nrow = visualize_style_mixing(
+                gen_ema, z_fixed[0:8:2], z_fixed[1:8:2]
+            )
+
             real, fake, fake_ema, fake_ema_mix = [
                 denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema, fake_ema_mix]
             ]
@@ -338,7 +345,7 @@ def main(config_path, **kwargs):
                 torchvision.utils.make_grid(fake_ema_mix, nrow=fake_ema_mix_nrow),
                 global_step=epoch,
             )
-            # break
+            break
             torch.save(
                 {
                     "gen": gen.state_dict(),
@@ -350,7 +357,7 @@ def main(config_path, **kwargs):
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
-        # break
+        break
 
     writer.flush()
     writer.close()
@@ -425,6 +432,27 @@ def build_dataset(config):
     # dataset = torchvision.datasets.CelebA(
     #     "./data/celeba", split="all", transform=transform, download=True
     # )
+
+
+def visualize_style_mixing(gen, z1, z2):
+    nrow = z2.size(0) + 1
+
+    image_1, _ = gen(z1)
+    image_2, _ = gen(z2)
+
+    images = [
+        torch.zeros_like(image_1[:1]),
+        image_2,
+    ]
+    for i in range(z1.size(0)):
+        images.append(image_1[i : i + 1])
+        for j in range(z2.size(0)):
+            image, _ = gen(z1[i : i + 1], z2[j : j + 1], 4)
+            images.append(image)
+
+    images = torch.cat(images, 0)
+
+    return images, nrow
 
 
 if __name__ == "__main__":

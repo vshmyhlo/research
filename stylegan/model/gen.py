@@ -1,5 +1,4 @@
 import math
-import random
 
 import torch
 import torch.nn.functional as F
@@ -75,10 +74,12 @@ class Gen(nn.Module):
         input = self.const.repeat(batch_size, 1, 1, 1)
         input = self.input.conv(input, w.pop(0))
         image = self.input.to_rgb(input, w.pop(0))
+        print(image.shape, len(w))
 
         for block in self.blocks:
             input = block.conv(input, w)
             image = self.upsample(image) + block.to_rgb(input, w.pop(0))
+            print(image.shape, len(w))
 
         assert len(w) == 0
 
@@ -175,13 +176,14 @@ class StyleMixing(nn.Module):
         if self.training:
             assert cutoff is None
             cutoff = torch.randint(1, l, size=(1, b, 1), device=w1.device)
-            take_first = (l_index < cutoff) | (torch.rand(1, b, 1, device=w1.device) > self.prob)
+            take_first_prob = torch.rand(1, b, 1, device=w1.device)
+            use_first = (l_index < cutoff) | (take_first_prob > self.prob)  # TODO:
         else:
-            take_first = l_index < cutoff
+            use_first = l_index < cutoff
 
-        mix = torch.where(take_first, w1, w2)
+        w = torch.where(use_first, w1, w2)
 
-        return mix
+        return w
 
 
 def layer_broadcast(input, num_layers):
