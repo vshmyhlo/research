@@ -458,9 +458,11 @@ def visualize_style_mixing(gen, z_row, z_col):
 
 def visualize_noise(gen, z):
     images = [gen(z)[0] for _ in range(32)]
+    images = [denormalize(x).clamp(0, 1) for x in images]
     images = torch.cat(images, 1)
     images = images.std(1, keepdim=True).repeat(1, 3, 1, 1)
-    images = (images - images.min()) / (images.max() - images.min())
+    print(images.min(), images.max())
+    # images = (images - images.min()) / (images.max() - images.min())
 
     return images
 
