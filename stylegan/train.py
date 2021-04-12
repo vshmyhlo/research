@@ -179,7 +179,7 @@ def main(config_path, **kwargs):
     )
     data_loader = ChunkedDataLoader(data_loader, config.batches_in_epoch)
 
-    z1_fixed, z2_fixed = z_dist.sample(8 ** 2)
+    z1_fixed, z2_fixed = z_dist(8 ** 2)
     dsc_compute_loss, gen_compute_loss = build_loss(config)
 
     writer = SummaryWriter(config.experiment_path)
@@ -209,7 +209,7 @@ def main(config_path, **kwargs):
             with zero_grad_and_step(opt_gen):
                 if config.debug:
                     print("gen")
-                fake, _ = gen(*z_dist.sample(config.batch_size))
+                fake, _ = gen(*z_dist(config.batch_size))
                 assert (
                     fake.size() == real.size()
                 ), "fake size {} does not match real size {}".format(fake.size(), real.size())
@@ -224,7 +224,7 @@ def main(config_path, **kwargs):
             if batch_i % config.gen.reg_interval == 0:
                 with zero_grad_and_step(opt_gen):
                     # path length regularization
-                    fake, w = gen(*z_dist.sample(config.batch_size))
+                    fake, w = gen(*z_dist(config.batch_size))
                     validate_shape(w, (None, config.batch_size, config.noise_size))
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
@@ -248,7 +248,7 @@ def main(config_path, **kwargs):
                 if config.debug:
                     print("dsc")
                 with torch.no_grad():
-                    fake, _ = gen(*z_dist.sample(config.batch_size))
+                    fake, _ = gen(*z_dist(config.batch_size))
                     assert (
                         fake.size() == real.size()
                     ), "fake size {} does not match real size {}".format(fake.size(), real.size())
