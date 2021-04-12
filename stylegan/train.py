@@ -297,7 +297,7 @@ def main(config_path, **kwargs):
             fake_ema, _ = gen_ema(z1_fixed)
             fake_ema_mix, fake_ema_mix_nrow = stack_images(
                 [
-                    gen_ema(z1_fixed[0:8], z2_fixed[8:16], mix_cutoff=cutoff)
+                    gen_ema(z1_fixed[0:8], z2_fixed[8:16], mix_cutoff=cutoff)[0]
                     for cutoff in reversed(
                         torch.arange(0, gen_ema.num_layers + 1, gen_ema.num_layers // 5)
                     )
