@@ -19,9 +19,8 @@ from precision_recall import plot_pr_curve, precision_recall_auc
 from stylegan.model.dsc import Dsc
 from stylegan.model.gen import Gen
 from stylegan.model.modules import ZDist
-from utils import log_duration
 from summary_writers.file_system import SummaryWriter
-from utils import compute_nrow, stack_images, validate_shape, zero_grad_and_step
+from utils import compute_nrow, log_duration, stack_images, validate_shape, zero_grad_and_step
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.backends.cudnn.benchmark = True
@@ -299,8 +298,8 @@ def main(config_path, **kwargs):
             ]
             fake_ema_noise, fake_ema_noise_nrow = stack_images(
                 [
-                    fake_ema[:4],
-                    visualize_noise(gen_ema, z_fixed[:4], 32),
+                    fake_ema[:8],
+                    visualize_noise(gen_ema, z_fixed[:8], 64),
                 ]
             )
 
