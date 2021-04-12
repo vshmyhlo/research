@@ -287,6 +287,8 @@ def main(config_path, **kwargs):
                     loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
+            break
+
         dsc.eval()
         gen.eval()
         gen_ema.eval()
