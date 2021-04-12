@@ -295,12 +295,13 @@ def main(config_path, **kwargs):
         with torch.no_grad():
             fake, _ = gen(z_fixed)
             fake_ema, _ = gen_ema(z_fixed)
-            fake_ema_mix, fake_ema_mix_nrow = stack_images(
-                [
-                    gen_ema(z_fixed[0:8:2], z_fixed[1:8:2], mix_cutoff=cutoff)[0]
-                    for cutoff in reversed(torch.arange(0, gen_ema.num_layers + 1, 1))
-                ]
-            )
+            fake_ema_mix = [
+                gen_ema(z_fixed[0:8:2])[0],
+                gen_ema(z_fixed[1:8:2])[0],
+            ]
+            for cutoff in reversed(torch.arange(0, gen_ema.num_layers + 1, 1)):
+                fake_ema_mix.append(gen_ema(z_fixed[0:8:2], z_fixed[1:8:2], mix_cutoff=cutoff)[0])
+            fake_ema_mix, fake_ema_mix_nrow = stack_images(fake_ema_mix)
             real, fake, fake_ema, fake_ema_mix = [
                 denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema, fake_ema_mix]
             ]
