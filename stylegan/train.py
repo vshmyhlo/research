@@ -179,7 +179,7 @@ def main(config_path, **kwargs):
     )
     data_loader = ChunkedDataLoader(data_loader, config.batches_in_epoch)
 
-    z1_fixed, z2_fixed = z_dist(8 ** 2)
+    z_fixed, _ = z_dist(8 ** 2)
     dsc_compute_loss, gen_compute_loss = build_loss(config)
 
     writer = SummaryWriter(config.experiment_path)
@@ -293,13 +293,13 @@ def main(config_path, **kwargs):
         gen.eval()
         gen_ema.eval()
         with torch.no_grad():
-            fake, _ = gen(z1_fixed)
-            fake_ema, _ = gen_ema(z1_fixed)
+            fake, _ = gen(z_fixed)
+            fake_ema, _ = gen_ema(z_fixed)
             fake_ema_mix, fake_ema_mix_nrow = stack_images(
                 [
-                    gen_ema(z1_fixed[0:8], z2_fixed[8:16], mix_cutoff=cutoff)[0]
+                    gen_ema(z_fixed[0:4], z_fixed[4:8], mix_cutoff=cutoff)[0]
                     for cutoff in reversed(
-                        torch.arange(0, gen_ema.num_layers + 1, gen_ema.num_layers // 10)
+                        torch.arange(0, gen_ema.num_layers + 1, gen_ema.num_layers)
                     )
                 ]
             )
