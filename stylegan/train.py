@@ -288,7 +288,7 @@ def main(config_path, **kwargs):
                     loss_r1 = r1_penalty * (config.dsc.r1_gamma * 0.5) * config.dsc.reg_interval
                     loss_r1.mean().backward()
 
-            # break
+            break
 
         dsc.eval()
         gen.eval()
@@ -302,6 +302,12 @@ def main(config_path, **kwargs):
             real, fake, fake_ema, fake_ema_mix = [
                 denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema, fake_ema_mix]
             ]
+            fake_ema_noise, fake_ema_noise_nrow = stack_images(
+                [
+                    fake_ema[:4],
+                    visualize_noise(gen_ema, z_fixed[:4]),
+                ]
+            )
 
             dsc_logits = dsc_logits.compute_and_reset().data.cpu().numpy()
             dsc_targets = dsc_targets.compute_and_reset().data.cpu().numpy()
@@ -335,7 +341,12 @@ def main(config_path, **kwargs):
                 torchvision.utils.make_grid(fake_ema_mix, nrow=fake_ema_mix_nrow),
                 global_step=epoch,
             )
-            # break
+            writer.add_image(
+                "fake_ema_noise",
+                torchvision.utils.make_grid(fake_ema_noise, nrow=fake_ema_noise_nrow),
+                global_step=epoch,
+            )
+            break
             torch.save(
                 {
                     "gen": gen.state_dict(),
@@ -347,7 +358,7 @@ def main(config_path, **kwargs):
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
-        # break
+        break
 
     writer.flush()
     writer.close()
@@ -443,6 +454,14 @@ def visualize_style_mixing(gen, z_row, z_col):
     images = torch.cat(images, 0)
 
     return images, nrow
+
+
+def visualize_noise(gen, z):
+    images = [gen(z)[0] for _ in range(32)]
+    images = torch.stack(images, 0)
+    images = images.std(0)
+
+    return images
 
 
 if __name__ == "__main__":
