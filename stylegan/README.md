@@ -1,4 +1,4 @@
-# Implementation of [StyleGAN2 paper](https://arxiv.org/abs/1912.04958) in [PyTorch](https://pytorch.org/)
+# Implementation of [StyleGAN2](https://arxiv.org/abs/1912.04958) in [PyTorch](https://pytorch.org/)
 
 
 

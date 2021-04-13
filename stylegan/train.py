@@ -1,9 +1,11 @@
 import copy
 import math
 import os
+from functools import partial
 
 import click
 import torch
+import torch.nn as nn
 import torch.utils.data
 import torchvision
 import torchvision.transforms as T
@@ -124,6 +126,18 @@ generator.
 # TODO: generator's weights moving average
 
 
+class Infer(nn.Module):
+    def __init__(self, gen):
+        super().__init__()
+
+        self.gen = gen
+
+    def infer(self, *args, **kwargs):
+        images, _ = self.gen(*args, **kwargs)
+        images = denormalize(images).clamp(0, 1)
+        return images
+
+
 @click.command()
 @click.option("--config-path", type=click.Path(), required=True)
 @click.option("--experiment-path", type=click.Path(), required=True)
@@ -151,6 +165,9 @@ def main(config_path, **kwargs):
     opt_gen = build_optimizer(gen.parameters(), config)
     opt_dsc = build_optimizer(dsc.parameters(), config)
 
+    z_dist = ZDist(config.noise_size, DEVICE)
+    z_fixed = z_dist(8 ** 2, truncation=1)
+
     if os.path.exists(os.path.join(config.experiment_path, "checkpoint.pth")):
         state = torch.load(os.path.join(config.experiment_path, "checkpoint.pth"))
         dsc.load_state_dict(state["dsc"])
@@ -159,6 +176,7 @@ def main(config_path, **kwargs):
         opt_gen.load_state_dict(state["opt_gen"])
         opt_dsc.load_state_dict(state["opt_dsc"])
         pl_ema.copy_(state["pl_ema"])
+        # z_fixed.copy_(state["z_fixed"]) # TODO:
         print("restored from checkpoint")
 
     dataset = build_dataset(config)
@@ -174,9 +192,6 @@ def main(config_path, **kwargs):
     data_loader = ChunkedDataLoader(data_loader, config.batches_in_epoch)
 
     dsc_compute_loss, gen_compute_loss = build_loss(config)
-
-    z_dist = ZDist(config.noise_size, DEVICE)
-    z_fixed = z_dist(8 ** 2, truncation=1)
 
     writer = SummaryWriter(config.experiment_path)
     for epoch in range(1, config.num_epochs + 1):
@@ -289,18 +304,19 @@ def main(config_path, **kwargs):
         gen.eval()
         gen_ema.eval()
         with torch.no_grad(), log_duration("visualization took {:.2f} seconds"):
-            fake, _ = gen(z_fixed)
-            fake_ema, _ = gen_ema(z_fixed)
+            infer = Infer(gen)
+            infer_ema = Infer(gen_ema)
+
+            fake = infer(z_fixed)
+            fake_ema = infer_ema(z_fixed)
             fake_ema_mix, fake_ema_mix_nrow = visualize_style_mixing(
-                gen_ema, z_fixed[0 : 8 * 2 : 2], z_fixed[1 : 8 * 2 : 2]
+                infer_ema, z_fixed[0 : 8 * 2 : 2], z_fixed[1 : 8 * 2 : 2]
             )
-            real, fake, fake_ema, fake_ema_mix = [
-                denormalize(x).clamp(0, 1) for x in [real, fake, fake_ema, fake_ema_mix]
-            ]
+
             fake_ema_noise, fake_ema_noise_nrow = stack_images(
                 [
                     fake_ema[:8],
-                    visualize_noise(gen_ema, z_fixed[:8], 64),
+                    visualize_noise(infer_ema, z_fixed[:8], 64),
                 ]
             )
 
@@ -350,6 +366,7 @@ def main(config_path, **kwargs):
                     "opt_gen": opt_gen.state_dict(),
                     "opt_dsc": opt_dsc.state_dict(),
                     "pl_ema": pl_ema,
+                    "z_fixed": z_fixed,
                 },
                 os.path.join(config.experiment_path, "checkpoint.pth"),
             )
@@ -430,11 +447,11 @@ def build_dataset(config):
     # )
 
 
-def visualize_style_mixing(gen, z_row, z_col):
+def visualize_style_mixing(infer, z_row, z_col):
     nrow = z_col.size(0) + 1
 
-    image_row, _ = gen(z_row)
-    image_col, _ = gen(z_col)
+    image_row = infer(z_row)
+    image_col = infer(z_col)
 
     images = [
         torch.zeros_like(image_col[:1]),
@@ -443,7 +460,7 @@ def visualize_style_mixing(gen, z_row, z_col):
     for i in range(z_row.size(0)):
         images.append(image_row[i : i + 1])
         for j in range(z_col.size(0)):
-            image, _ = gen(z_row[i : i + 1], z_col[j : j + 1], 5)
+            image = infer(z_row[i : i + 1], z_col[j : j + 1], 5)
             images.append(image)
 
     images = torch.cat(images, 0)
@@ -451,9 +468,8 @@ def visualize_style_mixing(gen, z_row, z_col):
     return images, nrow
 
 
-def visualize_noise(gen, z, num_samples):
-    images = [gen(z)[0] for _ in range(num_samples)]
-    images = [denormalize(x).clamp(0, 1) for x in images]
+def visualize_noise(infer, z, num_samples):
+    images = [infer(z) for _ in range(num_samples)]
     images = torch.cat(images, 1)
     images = images.std(1, keepdim=True).repeat(1, 3, 1, 1)
     images = (images - images.min()) / (images.max() - images.min())
