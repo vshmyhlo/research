@@ -205,24 +205,17 @@ class ZDist(nn.Module):
         self.device = device
 
     def forward(self, batch_size, truncation=None):
-        z1 = torch.randn(batch_size, self.z_size, device=self.device)
-        z2 = torch.randn(batch_size, self.z_size, device=self.device)
+        z = torch.randn(batch_size, self.z_size, device=self.device)
 
-        if truncation is not None:
-            z1 = self.truncate(z1, truncation=truncation)
-            z2 = self.truncate(z2, truncation=truncation)
+        if truncation is None:
+            return z
 
-        return z1, z2
-
-    def truncate(self, z, truncation):
         assert truncation > 0
-
-        for i in range(100):
+        for i in range(128):
             inside = (-truncation < z) & (z < truncation)
             if inside.all():
                 break
             z = torch.where(inside, z, torch.randn_like(z))
-
-        print("truncation took {} iterations".format(i))
+        print("truncated after {} iterations".format(i))
 
         return z

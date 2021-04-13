@@ -54,7 +54,6 @@ torch.backends.cudnn.benchmark = True
 # TODO: drift regularization? (progan)
 # TODO: lsgan discriminator noise hack (progan)
 # TODO: adain removes any statistics and adds statistics from the style before next cov
-# TODO: style mixing regularization (stylegan)
 # TODO: reg interval and epoch size
 # TODO: bilinear sampling, which we implement by filtering the activations after each upsampling layer and before each downsampling layer
 # TODO: slower channel size growing
@@ -62,8 +61,9 @@ torch.backends.cudnn.benchmark = True
 # TODO: The activation function (leaky ReLU) is always applied right after adding the bias
 # TODO: review group conv usage
 # TODO: downsampling stride
-# TODO: use truncation trick
+# TODO: use W truncation trick
 # TODO: upsample_conv, conv_downsample
+
 
 """
 1We use 2× fewer feature maps, 2× larger minibatch, mixed-precision training for layers at ≥ 322
@@ -176,7 +176,7 @@ def main(config_path, **kwargs):
     dsc_compute_loss, gen_compute_loss = build_loss(config)
 
     z_dist = ZDist(config.noise_size, DEVICE)
-    z_fixed, _ = z_dist(8 ** 2, truncation=1)
+    z_fixed = z_dist(8 ** 2, truncation=1)
 
     writer = SummaryWriter(config.experiment_path)
     for epoch in range(1, config.num_epochs + 1):
@@ -205,7 +205,7 @@ def main(config_path, **kwargs):
             with zero_grad_and_step(opt_gen):
                 if config.debug:
                     print("gen")
-                fake, _ = gen(*z_dist(config.batch_size))
+                fake, _ = gen(z_dist(config.batch_size), z_dist(config.batch_size))
                 assert (
                     fake.size() == real.size()
                 ), "fake size {} does not match real size {}".format(fake.size(), real.size())
@@ -220,7 +220,7 @@ def main(config_path, **kwargs):
             if batch_i % config.gen.reg_interval == 0:
                 with zero_grad_and_step(opt_gen):
                     # path length regularization
-                    fake, w = gen(*z_dist(config.batch_size))
+                    fake, w = gen(z_dist(config.batch_size), z_dist(config.batch_size))
                     validate_shape(w, (None, config.batch_size, config.noise_size))
                     pl_noise = torch.randn_like(fake) / math.sqrt(fake.size(2) * fake.size(3))
                     (pl_grads,) = torch.autograd.grad(
@@ -244,7 +244,7 @@ def main(config_path, **kwargs):
                 if config.debug:
                     print("dsc")
                 with torch.no_grad():
-                    fake, _ = gen(*z_dist(config.batch_size))
+                    fake, _ = gen(z_dist(config.batch_size), z_dist(config.batch_size))
                     assert (
                         fake.size() == real.size()
                     ), "fake size {} does not match real size {}".format(fake.size(), real.size())
