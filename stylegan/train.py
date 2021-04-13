@@ -132,7 +132,7 @@ class Infer(nn.Module):
 
         self.gen = gen
 
-    def infer(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
         images, _ = self.gen(*args, **kwargs)
         images = denormalize(images).clamp(0, 1)
         return images
