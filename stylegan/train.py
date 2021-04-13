@@ -132,7 +132,6 @@ generator.
 def main(config_path, **kwargs):
     config = load_config(config_path, **kwargs)
 
-    z_dist = ZDist(config.noise_size, DEVICE)
     gen = Gen(
         image_size=config.image_size,
         base_channels=config.gen.base_channels,
@@ -174,8 +173,10 @@ def main(config_path, **kwargs):
     )
     data_loader = ChunkedDataLoader(data_loader, config.batches_in_epoch)
 
-    z_fixed, _ = z_dist(8 ** 2)
     dsc_compute_loss, gen_compute_loss = build_loss(config)
+
+    z_dist = ZDist(config.noise_size, DEVICE)
+    z_fixed, _ = z_dist(8 ** 2, truncate=1)
 
     writer = SummaryWriter(config.experiment_path)
     for epoch in range(1, config.num_epochs + 1):
