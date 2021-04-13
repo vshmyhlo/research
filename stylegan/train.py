@@ -176,7 +176,7 @@ def main(config_path, **kwargs):
     dsc_compute_loss, gen_compute_loss = build_loss(config)
 
     z_dist = ZDist(config.noise_size, DEVICE)
-    z_fixed, _ = z_dist(8 ** 2, truncate=1)
+    z_fixed, _ = z_dist(8 ** 2, truncation=1)
 
     writer = SummaryWriter(config.experiment_path)
     for epoch in range(1, config.num_epochs + 1):
