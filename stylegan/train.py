@@ -337,7 +337,7 @@ def main(config_path, **kwargs):
             )
             writer.add_image(
                 "fake_ema_noise",
-                torchvision.utils.make_grid(fake_ema_noise, nrow=fake_ema_noise_nrow),
+                torchvision.utils.make_grid(fake_ema_noise, nrow=fake_ema_noise_nrow * 2),
                 global_step=epoch,
             )
             # break
