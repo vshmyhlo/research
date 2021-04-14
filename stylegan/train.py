@@ -316,7 +316,7 @@ def main(config_path, **kwargs):
             fake_ema_noise, fake_ema_noise_nrow = stack_images(
                 [
                     fake_ema[:8],
-                    visualize_noise(infer_ema, z_fixed[:8], 64),
+                    visualize_noise(infer_ema, z_fixed[:8], 128),
                 ]
             )
 
