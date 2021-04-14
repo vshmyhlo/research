@@ -117,13 +117,9 @@ generator.
 """
 
 
-# TODO: fake vs fake-ema visualization
 # TODO: bilinear upsample
 # TODO: output std of fakes
 # TODO: use minibatch stddev to stabilize training
-# TODO: Dima's idea on set-transformer
-# TODO: spectral norm
-# TODO: generator's weights moving average
 
 
 class Infer(nn.Module):
@@ -134,8 +130,11 @@ class Infer(nn.Module):
 
     def forward(self, *args, **kwargs):
         images, _ = self.gen(*args, **kwargs)
-        images = denormalize(images).clamp(0, 1)
+        images = self.postprocess(images)
         return images
+
+    def postprocess(self, input):
+        return denormalize(input).clamp(0, 1)
 
 
 @click.command()
@@ -307,6 +306,7 @@ def main(config_path, **kwargs):
             infer = Infer(gen)
             infer_ema = Infer(gen_ema)
 
+            real = infer.postprocess(real)
             fake = infer(z_fixed)
             fake_ema = infer_ema(z_fixed)
             fake_ema_mix, fake_ema_mix_nrow = visualize_style_mixing(
