@@ -439,13 +439,6 @@ def build_dataset(config):
     else:
         raise ValueError("invalid config.dataset {}".format(config.dataset))
 
-    # dataset = torchvision.datasets.MNIST(
-    #     "./data/mnist", train=True, transform=transform, download=True
-    # )
-    # dataset = torchvision.datasets.CelebA(
-    #     "./data/celeba", split="all", transform=transform, download=True
-    # )
-
 
 def visualize_style_mixing(infer, z_row, z_col):
     nrow = z_col.size(0) + 1
