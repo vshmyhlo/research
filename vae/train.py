@@ -94,11 +94,16 @@ def main():
 
         for k in metrics:
             writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
-        writer.add_image("x", utils.make_grid(x * 0.5 + 0.5), global_step=epoch)
+        writer.add_image("x", utils.make_grid(denormalize(x)), global_step=epoch)
         x_hat = dist_x.sample()
+        writer.add_image("x_hat", utils.make_grid(denormalize(x_hat)), global_step=epoch)
         writer.add_image(
-            "x_hat", utils.make_grid(x_hat * 0.5 + 0.5).clamp(0, 1), global_step=epoch
+            "dist_x_mean", utils.make_grid(denormalize(dist_x.mean)), global_step=epoch
         )
+
+
+def denormalize(input):
+    return (input * 0.5 + 0.5).clamp(0, 1)
 
 
 def compute_loss(dist_qzgx, z, dist_pxgz, x):
@@ -112,6 +117,8 @@ def compute_loss(dist_qzgx, z, dist_pxgz, x):
 
     kl = log_qzgx - log_pz
     loss = kl - log_pxgz
+
+    assert kl.size() == log_pxgz.size()
 
     return loss, kl, log_pxgz
 

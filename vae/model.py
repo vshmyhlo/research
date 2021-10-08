@@ -52,11 +52,17 @@ class Decoder(nn.Module):
             nn.Conv2d(model_size, 2, 3, padding=1),
         )
 
+        # self.log_std = nn.Parameter(torch.empty(()))
+        # nn.init.constant_(self.log_std, 0)
+
     def forward(self, input):
         input = input.view(*input.size(), 1, 1)
         input = self.conv(input)
 
         mean, log_std = torch.chunk(input, 2, dim=1)
         dist = torch.distributions.Normal(mean, log_std.exp())
+
+        # mean = input
+        # dist = torch.distributions.Normal(mean, self.log_std.exp())
 
         return dist
