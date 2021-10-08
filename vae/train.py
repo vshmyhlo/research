@@ -29,13 +29,11 @@ from vae.model import Decoder, Encoder
 def build_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment-path", type=str, default="./tf_log")
-    parser.add_argument("--restore-path", type=str)
     parser.add_argument("--dataset-path", type=str, default="./data/mnist")
-    parser.add_argument("--learning-rate", type=float, default=5e-5)
-    parser.add_argument("--model-size", type=int, default=32)
-    parser.add_argument("--latent-size", type=int, default=128)
+    parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument("--model-size", type=int, default=16)
+    parser.add_argument("--latent-size", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
-    # parser.add_argument('--opt', type=str, choices=['adam', 'momentum'], default='momentum')
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
 
@@ -69,9 +67,13 @@ def main():
     )
 
     writer = SummaryWriter(config.experiment_path)
-    metrics = {"loss": Mean()}
+    metrics = {
+        "loss": Mean(),
+        "kl": Mean(),
+        "log_pxgz": Mean(),
+    }
 
-    for epoch in range(config.epochs):
+    for epoch in range(1, config.epochs + 1):
         encoder.train()
         decoder.train()
         for x, _ in tqdm(data_loader, desc="epoch {} training".format(epoch)):
@@ -80,19 +82,23 @@ def main():
             dist_z = encoder(x)
             z = dist_z.rsample()
             dist_x = decoder(z)
-            loss = compute_loss(dist_z, z, dist_x, x)
-
-            print(loss.shape)
+            loss, kl, log_pxgz = compute_loss(dist_z, z, dist_x, x)
 
             opt.zero_grad()
             loss.mean().backward()
             opt.step()
 
             metrics["loss"].update(loss.detach())
+            metrics["kl"].update(kl.detach())
+            metrics["log_pxgz"].update(log_pxgz.detach())
 
-        writer.add_scalar("loss", metrics["loss"].compute_and_reset(), global_step=epoch)
+        for k in metrics:
+            writer.add_scalar(k, metrics[k].compute_and_reset(), global_step=epoch)
         writer.add_image("x", utils.make_grid(x * 0.5 + 0.5), global_step=epoch)
-        # writer.add_image("x_hat", utils.make_grid((fake + 1) / 2), global_step=epoch)
+        x_hat = dist_x.sample()
+        writer.add_image(
+            "x_hat", utils.make_grid(x_hat * 0.5 + 0.5).clamp(0, 1), global_step=epoch
+        )
 
 
 def compute_loss(dist_qzgx, z, dist_pxgz, x):
@@ -107,7 +113,7 @@ def compute_loss(dist_qzgx, z, dist_pxgz, x):
     kl = log_qzgx - log_pz
     loss = kl - log_pxgz
 
-    return loss
+    return loss, kl, log_pxgz
 
 
 if __name__ == "__main__":
