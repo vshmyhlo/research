@@ -36,8 +36,8 @@ def build_parser():
     parser.add_argument("--dataset-path", type=str, default="./data/mnist")
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--model-size", type=int, default=16)
-    parser.add_argument("--latent-size", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--latent-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
 
