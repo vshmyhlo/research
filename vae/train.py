@@ -26,6 +26,10 @@ from vae.model import Decoder, Encoder
 # TODO: cleanup (args, code)
 
 
+MEAN = 0.5
+STD = 0.25
+
+
 def build_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment-path", type=str, default="./tf_log")
@@ -46,7 +50,7 @@ def main():
     # logging.info(args_to_string(config))
     # fix_seed(config.seed)
 
-    transform = T.Compose([T.ToTensor(), T.Normalize([0.5], [0.5]),])
+    transform = T.Compose([T.ToTensor(), T.Normalize([MEAN], [STD]),])
 
     data_loader = torch.utils.data.DataLoader(
         MNIST(config.dataset_path, download=True, transform=transform),
@@ -103,7 +107,7 @@ def main():
 
 
 def denormalize(input):
-    return (input * 0.5 + 0.5).clamp(0, 1)
+    return (input * STD + MEAN).clamp(0, 1)
 
 
 def compute_loss(dist_qzgx, z, dist_pxgz, x):
