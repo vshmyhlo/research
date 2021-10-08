@@ -1,29 +1,35 @@
 import torch
 import torch.nn as nn
 
-import modules
-
 
 class Encoder(nn.Module):
     def __init__(self, model_size, latent_size):
         super().__init__()
 
         self.conv = nn.Sequential(
-            modules.ConvNorm2d(1, model_size, 3, padding=1),
+            nn.Conv2d(1, model_size, 3, padding=1, bias=False),
+            nn.BatchNorm2d(model_size),
             nn.LeakyReLU(0.2, inplace=True),
-            modules.ConvNorm2d(model_size, model_size * 2, 3, stride=2, padding=1),
+            #
+            nn.Conv2d(model_size, model_size * 2, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(model_size * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            modules.ConvNorm2d(model_size * 2, model_size * 4, 3, stride=2, padding=1),
+            #
+            nn.Conv2d(model_size * 2, model_size * 4, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(model_size * 4),
             nn.LeakyReLU(0.2, inplace=True),
+            #
             nn.Conv2d(model_size * 4, latent_size * 2, 7),
         )
 
     def forward(self, input):
         input = self.conv(input)
-        input = input.view(*input.size()[:2])
-        mean, log_var = torch.split(input, input.size(-1) // 2, dim=-1)
+        input = input.view(input.size(0), input.size(1))
 
-        return mean, log_var
+        mean, log_std = torch.chunk(input, 2, dim=1)
+        dist = torch.distributions.Normal(mean, log_std.exp())
+
+        return dist
 
 
 class Decoder(nn.Module):
@@ -31,18 +37,26 @@ class Decoder(nn.Module):
         super().__init__()
 
         self.conv = nn.Sequential(
-            modules.ConvTransposeNorm2d(latent_size, model_size * 4, 7),
+            nn.ConvTranspose2d(latent_size, model_size * 4, 7),
+            nn.BatchNorm2d(model_size * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            modules.ConvTransposeNorm2d(model_size * 4, model_size * 2, 4, stride=2, padding=1),
+            #
+            nn.ConvTranspose2d(model_size * 4, model_size * 2, 4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(model_size * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            modules.ConvTransposeNorm2d(model_size * 2, model_size, 4, stride=2, padding=1),
+            #
+            nn.ConvTranspose2d(model_size * 2, model_size, 4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(model_size),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(model_size, 1, 3, padding=1),
-            nn.Tanh(),
+            #
+            nn.Conv2d(model_size, 2, 3, padding=1),
         )
 
     def forward(self, input):
         input = input.view(*input.size(), 1, 1)
         input = self.conv(input)
 
-        return input
+        mean, log_std = torch.chunk(input, 2, dim=1)
+        dist = torch.distributions.Normal(mean, log_std.exp())
+
+        return dist
