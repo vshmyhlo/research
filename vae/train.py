@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import torch.utils.data
@@ -27,6 +28,7 @@ from vae.model import Model
 # TODO: cleanup (args, code)
 # TODO: interpolate between 2 codes
 # TODO: discrete decoder output
+# TODO: debug slowdown between epochs
 
 
 MEAN = 0.5
@@ -123,7 +125,7 @@ def train(model, opt, data_loader, epoch, config):
     dist_pz = torch.distributions.Normal(
         torch.zeros_like(dist_pz.mean), torch.ones_like(dist_pz.scale),
     )
-    z = dist_pz.rsample()
+    z = dist_pz.rsampl()
     dist_px = model.decoder(z)
     writer.add_image(
         "prior/dist_x_mean", utils.make_grid(denormalize(dist_px.mean)), global_step=epoch
@@ -183,6 +185,20 @@ def compute_loss(dist_qzgx, z, dist_pxgz, x):
     loss = kl - log_pxgz
 
     return loss, kl, log_pxgz
+
+
+def plot_dist(dist_qzgx, num_samples=100):
+    xg, yg = torch.meshgrid(
+        torch.linspace(-3, 3, num_samples), torch.linspace(-3, 3, num_samples),
+    )
+
+    p = dist_qzgx.prob(grid)
+    p = p.view(b, h, w)
+
+    fig = plt.figure()
+    plt.contour(xg, yg, pg)
+
+    return fig
 
 
 if __name__ == "__main__":

@@ -67,11 +67,11 @@ class Decoder(nn.Module):
         input = input.view(*input.size(), 1, 1)
         input = self.conv(input)
 
-        # mean, log_std = torch.chunk(input, 2, dim=1)
-        # dist = torch.distributions.Normal(mean, log_std.exp())
+        mean, log_var = torch.chunk(input, 2, dim=1)
+        dist = torch.distributions.Normal(mean, (log_var / 2).exp())
 
-        mean, _ = torch.chunk(input, 2, dim=1)
-        dist = torch.distributions.Normal(mean, (self.log_var / 2).exp())
+        # mean, _ = torch.chunk(input, 2, dim=1)
+        # dist = torch.distributions.Normal(mean, (self.log_var / 2).exp())
 
         return dist
 
