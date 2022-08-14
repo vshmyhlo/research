@@ -42,7 +42,6 @@ def build_agent(obs_space, act_space):
     #     return logits, v, state
 
     def agent(obs, state):
-        # emb = hk.nets.MLP([32])(obs)
         logits = hk.nets.MLP([32, act_space.n])(obs)
         v = jnp.squeeze(hk.nets.MLP([32, 1])(obs), -1)
         return logits, v, state
