@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
 
+# TODO: jit unrolls the loop
 def n_step_bootstrapped_return(
     r_t,
     d_t,
