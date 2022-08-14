@@ -130,7 +130,7 @@ def main(run_id):
         if d_t:
             for k in info['episode']:
                 writer.add_scalar(f'episode/{k}', info['episode'][k], global_step=step_i)
-            writer.add_scalar('episode_i', episode_i, global_step=step_i)
+            writer.add_scalar('episode/i', episode_i, global_step=step_i)
             episode_i += 1
 
         obs_tm1, agent_state_tm1 = obs_t, agent_state_t
