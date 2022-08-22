@@ -5,6 +5,8 @@ from rl.utils import n_step_bootstrapped_return
 
 n_step_bootstrapped_return = jax.jit(n_step_bootstrapped_return)
 
+# TODO: test against rlax
+
 
 def test_n_step_bootstrapped_return():
     reward_t = jnp.array([1.0, 2.0, 3.0])

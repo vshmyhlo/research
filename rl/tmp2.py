@@ -3,6 +3,7 @@ import gym
 import haiku as hk
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import rlax
 from tensorboardX import SummaryWriter
@@ -25,7 +26,7 @@ class TransitionList:
         self.transitions.append(kwargs)
 
     def build_batch(self):
-        return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, 0), *self.transitions)
+        return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, 1), *self.transitions)
 
 
 def build_agent(obs_space, act_space):
@@ -41,24 +42,25 @@ def build_agent(obs_space, act_space):
 @click.command()
 @click.option('--run-id', type=str, required=True)
 def main(run_id):
+    batch_size = 32
     seed = 42
     num_observations = 50000
     entropy_weight = 1e-2
+    horizon = 32
 
     rng = hk.PRNGSequence(jax.random.PRNGKey(seed))
 
-    env = gym.make('CartPole-v1', render_mode='rgb_array')
-    env = gym.wrappers.AutoResetWrapper(env)
+    env = gym.vector.SyncVectorEnv([lambda: gym.make('CartPole-v1') for _ in range(batch_size)])
     env = gym.wrappers.RecordEpisodeStatistics(env)
-    print(env.action_space)
-    print(env.observation_space)
+    print(env.single_action_space)
+    print(env.single_observation_space)
 
     env.seed(42)
 
     obs_tm1 = env.reset()
     agent_state_tm1 = None
 
-    agent = hk.without_apply_rng(hk.transform(build_agent(env.observation_space, env.action_space)))
+    agent = hk.without_apply_rng(hk.transform(build_agent(env.single_observation_space, env.single_action_space)))
     agent_forward = jax.jit(agent.apply)
     params = agent.init(next(rng), obs_tm1, agent_state_tm1)
 
@@ -71,17 +73,17 @@ def main(run_id):
         def compute_loss(params, batch):
             logits_tm1, v_tm1, _ = agent_forward(params, batch['obs_tm1'], None)
 
-            _, v_t, _ = agent_forward(params, batch['obs_t'][-1], None)
+            _, v_t, _ = agent_forward(params, batch['obs_t'][:, -1], None)
 
             dist = rlax.softmax()
             entropy_tm1 = dist.entropy(logits_tm1)
             log_prob_tm1 = dist.logprob(batch['a_tm1'], logits_tm1)
 
-            v_target = rl.utils.n_step_bootstrapped_return(
+            v_target = jax.vmap(rl.utils.n_step_bootstrapped_return, in_axes=0, out_axes=0)(
                 r_t=batch['r_t'],
                 d_t=batch['d_t'],
                 v_t=jax.lax.stop_gradient(v_t),
-                discount=jnp.array(0.98),
+                discount=jnp.full_like(v_t, 0.98),
             )
 
             td_error = v_target - v_tm1
@@ -114,14 +116,20 @@ def main(run_id):
 
     transitions = TransitionList()
     writer = SummaryWriter(f'./log/{run_id}')
-    episode_i = 1
 
-    for step_i in tqdm(range(1, num_observations + 1)):
+    episodes_done = 0
+    observations_seen = len(obs_tm1)
+    pbar = tqdm(total=num_observations, initial=observations_seen)
+
+    while observations_seen < num_observations:
         logits_tm1, _, agent_state_t = agent_forward(params, obs_tm1, agent_state_tm1)
 
         a_tm1 = rlax.softmax().sample(next(rng), logits_tm1)
 
-        obs_t, r_t, d_t, info = env.step(int(a_tm1))
+        obs_t, r_t, d_t, info = env.step(np.array(a_tm1))
+
+        observations_seen += len(obs_t)
+        pbar.update(len(obs_t))
 
         transitions.append(
             obs_tm1=obs_tm1,
@@ -131,28 +139,28 @@ def main(run_id):
             d_t=d_t,
         )
 
-        if d_t:
-            for k in info['episode']:
-                writer.add_scalar(f'episode/{k}', info['episode'][k], global_step=step_i)
-            writer.add_scalar('episode/i', episode_i, global_step=step_i)
-            episode_i += 1
+        for i in jnp.where(d_t)[0]:
+            episodes_done += 1
+            info_at_end = jax.tree_util.tree_map(lambda x: x[i], info)
+            assert info_at_end['_episode']
+            for k in info_at_end['episode']:
+                writer.add_scalar(f'episode/{k}', info_at_end['episode'][k], global_step=observations_seen)
+            writer.add_scalar('episode/i', episodes_done, global_step=observations_seen)
 
         obs_tm1, agent_state_tm1 = obs_t, agent_state_t
 
-        if len(transitions) >= 32:
+        if len(transitions) >= horizon:
             batch = transitions.build_batch()
             transitions = TransitionList()
             # pprint(jax.tree_util.tree_map(lambda x: x.shape, batch))
             params, opt_state, (critic_loss, actor_loss, v_target, td_error, v_tm1,
                                 entropy_tm1), = opt_step(params, opt_state, batch)
-            writer.add_scalar('critic_loss', critic_loss.mean(), global_step=step_i)
-            writer.add_scalar('actor_loss', actor_loss.mean(), global_step=step_i)
-            writer.add_scalar('v_target', v_target.mean(), global_step=step_i)
-            writer.add_scalar('v_tm1', v_tm1.mean(), global_step=step_i)
-            writer.add_scalar('td_error', td_error.mean(), global_step=step_i)
-            writer.add_scalar('enropy_tm1', entropy_tm1.mean(), global_step=step_i)
-            # print(v_target.squeeze())
-            # return
+            writer.add_scalar('critic_loss', critic_loss.mean(), global_step=observations_seen)
+            writer.add_scalar('actor_loss', actor_loss.mean(), global_step=observations_seen)
+            writer.add_scalar('v_target', v_target.mean(), global_step=observations_seen)
+            writer.add_scalar('v_tm1', v_tm1.mean(), global_step=observations_seen)
+            writer.add_scalar('td_error', td_error.mean(), global_step=observations_seen)
+            writer.add_scalar('enropy_tm1', entropy_tm1.mean(), global_step=observations_seen)
 
 
 if __name__ == '__main__':
