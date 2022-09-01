@@ -114,7 +114,7 @@ def main(run_id):
 
     transitions = TransitionList()
     writer = SummaryWriter(f'./log/{run_id}')
-    episode_i = 1
+    episode_i = 0
 
     for step_i in tqdm(range(1, num_observations + 1)):
         logits_tm1, _, agent_state_t = agent_forward(params, obs_tm1, agent_state_tm1)
