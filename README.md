@@ -52,6 +52,7 @@
 
 ## Reinforcement Learning
 * [Reinforcement Learning Algorithms](https://github.com/v-shmyhlo/reinforcement-learning)
+* [Basic stuff in JAX](./rl)
 
 ## Computer Graphics
 * [Ray Tracing Python](./ray_tracing)
