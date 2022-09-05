@@ -96,7 +96,7 @@ def build_opt_step(agent_forward, opt, config):
 
     def opt_step(params, opt_state, batch):
         grads, aux = jax.grad(compute_loss_batch, has_aux=True)(params, batch)
-        updates, opt_state = opt.update(grads, opt_state)
+        updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
 
         return params, opt_state, aux, grads
@@ -131,9 +131,7 @@ def main(run_id, **kwargs):
     agent_forward = jax.jit(agent.apply)
     params = agent.init(next(rng), obs_tm1, agent_state_tm1)
 
-    opt = optax.chain(
-        # optax.clip_by_global_norm(1),
-        optax.adam(kwargs['lr'], b1=0.99),)
+    opt = optax.adam(kwargs['lr'], b1=0.99)
     opt_state = opt.init(params)
 
     opt_step = jax.jit(build_opt_step(agent_forward, opt, kwargs))
