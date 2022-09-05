@@ -3,6 +3,8 @@ import os
 import chex
 import click
 import gym
+import gym.vector
+import gym.wrappers
 import haiku as hk
 import jax
 import jax.flatten_util
@@ -50,6 +52,58 @@ def build_agent(obs_space, act_space, d=32):
     return agent
 
 
+def build_opt_step(agent_forward, opt, config):
+
+    def compute_loss(params, traj):
+        logits_tm1, v_tm1, _ = agent_forward(params, traj['obs_tm1'], None)
+
+        _, v_t, _ = agent_forward(params, traj['obs_t'][-1], None)
+
+        dist = rlax.softmax()
+        entropy_tm1 = dist.entropy(logits_tm1)
+        log_prob_tm1 = dist.logprob(traj['a_tm1'], logits_tm1)
+
+        v_target = rl.utils.n_step_bootstrapped_return(
+            r_t=traj['r_t'],
+            d_t=traj['d_t'],
+            v_t=jax.lax.stop_gradient(v_t),
+            discount=jnp.array(config['discount']),
+        )
+
+        td_error = v_target - v_tm1
+
+        critic_loss = 0.5 * (td_error**2)
+        actor_loss = (-log_prob_tm1 * jax.lax.stop_gradient(td_error) - config['entropy_weight'] * entropy_tm1)
+        loss = actor_loss + critic_loss
+
+        chex.assert_equal_shape([log_prob_tm1, td_error, entropy_tm1, v_target, v_tm1, critic_loss, actor_loss, loss])
+
+        aux = {
+            'critic_loss': critic_loss,
+            'actor_loss': actor_loss,
+            'loss': loss,
+            'v_target': v_target,
+            'td_error': td_error,
+            'v_tm1': v_tm1,
+            'entropy_tm1': entropy_tm1
+        }
+
+        return loss.mean(), aux
+
+    def compute_loss_batch(params, batch):
+        loss, aux = jax.vmap(compute_loss, in_axes=(None, 0))(params, batch)
+        return loss.mean(), aux
+
+    def opt_step(params, opt_state, batch):
+        grads, aux = jax.grad(compute_loss_batch, has_aux=True)(params, batch)
+        updates, opt_state = opt.update(grads, opt_state)
+        params = optax.apply_updates(params, updates)
+
+        return params, opt_state, aux, grads
+
+    return opt_step
+
+
 @click.command()
 @click.option('--run-id', type=str, required=True)
 @click.option('--bs', 'batch_size', type=int, default=1)
@@ -82,55 +136,7 @@ def main(run_id, **kwargs):
         optax.adam(kwargs['lr'], b1=0.99),)
     opt_state = opt.init(params)
 
-    @jax.jit
-    def opt_step(params, opt_state, batch):
-
-        def compute_loss(params, traj):
-            logits_tm1, v_tm1, _ = agent_forward(params, traj['obs_tm1'], None)
-
-            _, v_t, _ = agent_forward(params, traj['obs_t'][-1], None)
-
-            dist = rlax.softmax()
-            entropy_tm1 = dist.entropy(logits_tm1)
-            log_prob_tm1 = dist.logprob(traj['a_tm1'], logits_tm1)
-
-            v_target = rl.utils.n_step_bootstrapped_return(
-                r_t=traj['r_t'],
-                d_t=traj['d_t'],
-                v_t=jax.lax.stop_gradient(v_t),
-                discount=jnp.array(kwargs['discount']),
-            )
-
-            td_error = v_target - v_tm1
-
-            critic_loss = 0.5 * (td_error**2)
-            actor_loss = (-log_prob_tm1 * jax.lax.stop_gradient(td_error) - kwargs['entropy_weight'] * entropy_tm1)
-            loss = actor_loss + critic_loss
-
-            chex.assert_equal_shape(
-                [log_prob_tm1, td_error, entropy_tm1, v_target, v_tm1, critic_loss, actor_loss, loss])
-
-            aux = {
-                'critic_loss': critic_loss,
-                'actor_loss': actor_loss,
-                'loss': loss,
-                'v_target': v_target,
-                'td_error': td_error,
-                'v_tm1': v_tm1,
-                'entropy_tm1': entropy_tm1
-            }
-
-            return loss.mean(), aux
-
-        def compute_loss_batch(params, batch):
-            loss, aux = jax.vmap(compute_loss, in_axes=(None, 0))(params, batch)
-            return loss.mean(), aux
-
-        grads, aux = jax.grad(compute_loss_batch, has_aux=True)(params, batch)
-        updates, opt_state = opt.update(grads, opt_state)
-        params = optax.apply_updates(params, updates)
-
-        return params, opt_state, aux, grads
+    opt_step = jax.jit(build_opt_step(agent_forward, opt, kwargs))
 
     transitions = TransitionList()
     writer = SummaryWriter(f'./log/{run_id}')
