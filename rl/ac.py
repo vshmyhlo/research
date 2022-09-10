@@ -1,7 +1,13 @@
+import os
+
+import chex
 import click
 import gym
+import gym.vector
+import gym.wrappers
 import haiku as hk
 import jax
+import jax.flatten_util
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -12,31 +18,7 @@ from tqdm import tqdm
 import rl
 import rl.utils
 import rl.wrappers
-
-
-class TransitionList:
-
-    def __init__(self) -> None:
-        self.transitions = []
-
-    def __len__(self):
-        return len(self.transitions)
-
-    def append(self, **kwargs):
-        self.transitions.append(kwargs)
-
-    def build_batch(self):
-        return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, 1), *self.transitions)
-
-
-def build_agent(obs_space, act_space):
-
-    def agent(obs, state):
-        logits = hk.nets.MLP([32, act_space.n])(obs)
-        v = jnp.squeeze(hk.nets.MLP([32, 1])(obs), -1)
-        return logits, v, state
-
-    return agent
+from rl.utils import TransitionList
 
 
 class Meter:
@@ -49,7 +31,6 @@ class Meter:
 
     def compute_and_reset(self):
         values = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, 0), *self.values)
-        # print(jax.tree_util.tree_map(lambda x: x.shape, values))
         values = jax.tree_util.tree_map(lambda x: x.mean(), values)
         self.values = []
         return values
@@ -61,22 +42,87 @@ class Meter:
         return len(self) > 0
 
 
+def build_agent(obs_space, act_space, d=32):
+
+    def agent(obs, state):
+        logits = hk.nets.MLP([d, act_space.n])(obs)
+        v = jnp.squeeze(hk.nets.MLP([d, 1])(obs), -1)
+        return logits, v, state
+
+    return agent
+
+
+def build_opt_step(agent_forward, opt, config):
+
+    def compute_loss(params, traj):
+        logits_tm1, v_tm1, _ = agent_forward(params, traj['obs_tm1'], None)
+
+        _, v_t, _ = agent_forward(params, traj['obs_t'][-1], None)
+
+        dist = rlax.softmax()
+        entropy_tm1 = dist.entropy(logits_tm1)
+        log_prob_tm1 = dist.logprob(traj['a_tm1'], logits_tm1)
+
+        v_target = rl.utils.n_step_bootstrapped_return(
+            r_t=traj['r_t'],
+            d_t=traj['d_t'],
+            v_t=jax.lax.stop_gradient(v_t),
+            discount=jnp.array(config['discount']),
+        )
+
+        td_error = v_target - v_tm1
+
+        critic_loss = 0.5 * (td_error**2)
+        actor_loss = (-log_prob_tm1 * jax.lax.stop_gradient(td_error) - config['entropy_weight'] * entropy_tm1)
+        loss = actor_loss + critic_loss
+
+        chex.assert_equal_shape([log_prob_tm1, td_error, entropy_tm1, v_target, v_tm1, critic_loss, actor_loss, loss])
+
+        aux = {
+            'critic_loss': critic_loss,
+            'actor_loss': actor_loss,
+            'loss': loss,
+            'v_target': v_target,
+            'td_error': td_error,
+            'v_tm1': v_tm1,
+            'entropy_tm1': entropy_tm1
+        }
+
+        return loss.mean(), aux
+
+    def compute_loss_batch(params, batch):
+        loss, aux = jax.vmap(compute_loss, in_axes=(None, 0))(params, batch)
+        return loss.mean(), aux
+
+    def opt_step(params, opt_state, batch):
+        grads, aux = jax.grad(compute_loss_batch, has_aux=True)(params, batch)
+        updates, opt_state = opt.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+
+        return params, opt_state, aux, grads
+
+    return opt_step
+
+
 @click.command()
 @click.option('--run-id', type=str, required=True)
 @click.option('--bs', 'batch_size', type=int, default=1)
 @click.option('--ew', 'entropy_weight', type=float, default=1e-2)
 @click.option('--h', 'horizon', type=int, default=32)
+@click.option('--d', 'discount', type=float, default=0.98)
+@click.option('--lr', 'lr', type=float, default=1e-2)
 def main(run_id, **kwargs):
     seed = 42
     num_observations = 50000
-    run_id += ''.join(f'[{k}={v}]' for k, v in kwargs.items())
+    run_id = os.path.join(run_id, ','.join(f'{k}={v}' for k, v in kwargs.items()))
 
     rng = hk.PRNGSequence(seed)
 
     env = gym.vector.SyncVectorEnv([lambda: gym.make('CartPole-v1') for _ in range(kwargs['batch_size'])])
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env.seed(seed)
-    print(env.single_action_space, env.single_observation_space)
+    print(env.single_action_space)
+    print(env.single_observation_space)
 
     obs_tm1 = env.reset()
     agent_state_tm1 = None
@@ -85,67 +131,10 @@ def main(run_id, **kwargs):
     agent_forward = jax.jit(agent.apply)
     params = agent.init(next(rng), obs_tm1, agent_state_tm1)
 
-    schedule_fn = optax.polynomial_schedule(init_value=1e-2, end_value=0., power=1, transition_steps=num_observations)
-    opt = optax.adam(lambda _: schedule_fn(observations_seen))
+    opt = optax.adam(kwargs['lr'], b1=0.99)
     opt_state = opt.init(params)
 
-    @jax.jit
-    def opt_step(params, opt_state, batch):
-
-        def compute_loss(params, batch):
-            logits_tm1, v_tm1, _ = agent_forward(params, batch['obs_tm1'], None)
-
-            _, v_t, _ = agent_forward(params, batch['obs_t'][:, -1], None)
-
-            dist = rlax.softmax()
-            entropy_tm1 = dist.entropy(logits_tm1)
-            log_prob_tm1 = dist.logprob(batch['a_tm1'], logits_tm1)
-
-            v_target = jax.vmap(rl.utils.n_step_bootstrapped_return, in_axes=0, out_axes=0)(
-                r_t=batch['r_t'],
-                d_t=batch['d_t'],
-                v_t=jax.lax.stop_gradient(v_t),
-                discount=jnp.full_like(v_t, 0.98),
-            )
-
-            td_error = v_target - v_tm1
-
-            critic_loss = 0.5 * (td_error**2)
-            actor_loss = (-log_prob_tm1 * jax.lax.stop_gradient(td_error) - kwargs['entropy_weight'] * entropy_tm1)
-            loss = actor_loss + critic_loss
-
-            print(
-                jax.tree_util.tree_map(lambda x: x.shape, [
-                    v_target,
-                    v_tm1,
-                    td_error,
-                    critic_loss,
-                    log_prob_tm1,
-                    entropy_tm1,
-                    actor_loss,
-                    loss,
-                ]))
-
-            aux = {
-                'critic_loss': critic_loss,
-                'actor_loss': actor_loss,
-                'loss': loss,
-                'v_target': v_target,
-                'td_error': td_error,
-                'v_tm1': v_tm1,
-                'entropy_tm1': entropy_tm1
-            }
-
-            loss = loss.mean()
-
-            return loss, aux
-
-        grads, aux = jax.grad(compute_loss, has_aux=True)(params, batch)
-        updates, opt_state = opt.update(grads, opt_state)
-        print(opt_state)
-        params = optax.apply_updates(params, updates)
-
-        return params, opt_state, aux
+    opt_step = jax.jit(build_opt_step(agent_forward, opt, kwargs))
 
     transitions = TransitionList()
     writer = SummaryWriter(f'./log/{run_id}')
@@ -189,20 +178,21 @@ def main(run_id, **kwargs):
             batch = transitions.build_batch()
             transitions = TransitionList()
             # pprint(jax.tree_util.tree_map(lambda x: x.shape, batch))
-            params, opt_state, aux = opt_step(params, opt_state, batch)
+            params, opt_state, aux, grads = opt_step(params, opt_state, batch)
             opt_steps += 1
-            writer.add_scalar('lr', schedule_fn(observations_seen), global_step=observations_seen)
             meter.update(aux)
 
             if opt_steps % 10 == 0:
                 if meter:
-                    print('meter')
                     for k, v in meter.compute_and_reset().items():
                         writer.add_scalar(k, v.mean(), global_step=observations_seen)
                 if ep_meter:
-                    print('ep_meter')
                     for k, v in ep_meter.compute_and_reset().items():
                         writer.add_scalar(f'episode/{k}', v.mean(), global_step=observations_seen)
+
+                grads, _ = jax.flatten_util.ravel_pytree(grads)
+                grad_norm = jnp.linalg.norm(grads, 2)
+                writer.add_scalar('grad_norm', grad_norm, global_step=observations_seen)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,21 @@
+import chex
 import jax
 import jax.numpy as jnp
+
+
+class TransitionList:
+
+    def __init__(self) -> None:
+        self.transitions = []
+
+    def __len__(self):
+        return len(self.transitions)
+
+    def append(self, **kwargs):
+        self.transitions.append(kwargs)
+
+    def build_batch(self):
+        return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, 1), *self.transitions)
 
 
 # TODO: jit unrolls the loop
@@ -9,8 +25,11 @@ def n_step_bootstrapped_return(
     v_t,
     discount,
 ):
-    # assert shape_matches(reward_t, done_t, dim=2)
-    # assert shape_matches(value_prime, dim=1)
+
+    chex.assert_equal_shape([r_t, d_t])
+    chex.assert_rank([r_t, d_t], 1)
+    chex.assert_equal_shape([v_t, discount])
+    chex.assert_rank([v_t, discount], 0)
 
     mask_t = (~d_t).astype(jnp.float32)
     return_ = v_t
