@@ -1,5 +1,4 @@
 import asyncio
-import pdb
 
 
 async def read():
@@ -18,7 +17,6 @@ async def worker(x):
 async def main():
     input = read()
     in_progress = set()
-    pdb.set_trace()
     async for x in input:
 
         while len(in_progress) > 3:
