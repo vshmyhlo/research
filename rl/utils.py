@@ -18,7 +18,6 @@ class TransitionList:
         return jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, 1), *self.transitions)
 
 
-# TODO: jit unrolls the loop
 def n_step_bootstrapped_return(
     r_t,
     d_t,
@@ -39,4 +38,27 @@ def n_step_bootstrapped_return(
         return_ = r_t[t] + mask_t[t] * discount * return_
         return_t = return_t.at[t].set(return_)
 
+    return return_t
+
+
+def n_step_bootstrapped_return_scan(
+    r_t,
+    d_t,
+    v_t,
+    discount,
+):
+
+    chex.assert_equal_shape([r_t, d_t])
+    chex.assert_rank([r_t, d_t], 1)
+    chex.assert_equal_shape([v_t, discount])
+    chex.assert_rank([v_t, discount], 0)
+
+    mask_t = (~d_t).astype(jnp.float32)
+
+    def scan(return_t, t):
+        r_t, mask_t = t
+        return_t = r_t + mask_t * discount * return_t
+        return return_t, return_t
+
+    _, return_t = jax.lax.scan(scan, v_t, (r_t, mask_t), reverse=True)
     return return_t

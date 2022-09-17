@@ -19,16 +19,10 @@ version = "0.1.0"
 [tool.poetry.dependencies]
 black = "^22.3.0"
 bokeh = "^2.4.3"
-dask = {extras = ["distributed", "dataframe"], version = "^2022.5.2"}
 ipython = "^8.4.0"
 isort = "^5.10.1"
-jax = {extras = ["cpu"], version = "^0.3.13"}
-jaxlib = "^0.3.10"
-joblib = "^1.1.0"
 jupyterlab = "^3.4.2"
 matplotlib = "^3.5.1"
-mimesis = "^5.4.0"
-numpy = "^1.22.3"
 python = ">=3.8,<3.11"
 scipy = "^1.8.0"
 torch = "^1.11.0"
@@ -38,13 +32,16 @@ autoflake = "^1.4"
 yapf = "^0.32.0"
 toml = "^0.10.2"
 gym = {extras = ["classic_control", "mujoco"], version = "^0.25.1"}
-rlax = "^0.1.2"
 dm-haiku = "^0.0.7"
 tensorboardX = "^2.5.1"
 tensorboard = "^2.10.0"
-optax = "^0.1.3"
 pytest = "^7.1.2"
 ray = "^2.0.0"
+numpy = "1.21.6"
+jax = "^0.3.17"
+optax = "^0.1.3"
+jaxlib = "^0.3.15"
+rlax = "^0.1.4"
 
 [tool.poetry.dev-dependencies]
 

@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import rlax
 
-from rl.utils import n_step_bootstrapped_return
+from rl.utils import n_step_bootstrapped_return, n_step_bootstrapped_return_scan
 
 n_step_bootstrapped_return = jax.jit(n_step_bootstrapped_return)
 
@@ -41,6 +41,21 @@ def test_n_step_bootstrapped_return_rlax():
     value_prime = jax.random.normal(next(rng), shape=())
 
     actual = n_step_bootstrapped_return(reward_t, done_t, value_prime, discount=0.9)
+    discount = jnp.where(done_t, 0, 0.9)
+    expected = rlax.n_step_bootstrapped_returns(reward_t, discount, jnp.full_like(reward_t, value_prime), size)
+
+    assert jnp.allclose(actual, expected)
+
+
+def test_n_step_bootstrapped_return_rlax_scan():
+    size = 100
+
+    rng = hk.PRNGSequence(42)
+    reward_t = jax.random.normal(next(rng), shape=[size])
+    done_t = jax.random.uniform(next(rng), shape=[size]) < 0.2
+    value_prime = jax.random.normal(next(rng), shape=())
+
+    actual = n_step_bootstrapped_return_scan(reward_t, done_t, value_prime, discount=jnp.array(0.9))
     discount = jnp.where(done_t, 0, 0.9)
     expected = rlax.n_step_bootstrapped_returns(reward_t, discount, jnp.full_like(reward_t, value_prime), size)
 
