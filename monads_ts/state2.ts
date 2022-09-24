@@ -1,6 +1,7 @@
 import { Stack } from 'immutable'
+import { Monad } from './monad'
 
-class State<S, A> {
+class State<S, A> implements Monad<A> {
     run: (s: S) => [A, S]
 
     constructor(run: (s: S) => [A, S]) {
@@ -28,18 +29,6 @@ class State<S, A> {
         })
     }
 }
-
-// const join =
-//     <S, A>(m: State<S, State<S, A>>): State<S, A> =>
-//     (s: S) => {
-//         const [nested, s2] = m(s)
-//         return nested(s2)
-//     }
-
-// const put =
-//     <S>(s: S) =>
-//     (_: any) =>
-//         [null, s] as [null, S]
 
 const push = <A>(a: A) => new State((s: Stack<A>) => [null, s.push(a)])
 

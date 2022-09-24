@@ -3,6 +3,7 @@ __pycache__
 .ipynb_checkpoints
 .coverage
 .DS_Store
+.stack-work
 *.ipynb
 sync.sh
 log

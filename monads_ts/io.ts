@@ -1,4 +1,5 @@
-class IO<A> {
+import { Monad } from './monad'
+class IO<A> implements Monad<A> {
     run: () => A
 
     constructor(f: () => A) {
