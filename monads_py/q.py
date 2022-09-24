@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import multiprocessing as mp
-from functools import partial
 from typing import Callable, Generic, TypeVar
+
+import ray
+from ray.util.queue import Queue
 
 A = TypeVar('A')
 B = TypeVar('B')
@@ -17,6 +18,22 @@ def debug(f, *args, **kwargs):
         print(e)
 
 
+def iter_queue(q):
+    while True:
+        x = q.get()
+        if x is None:
+            break
+
+        yield x
+
+
+@ray.remote
+def populate(init, q):
+    print('pop')
+    init(lambda a: q.put(a))
+    q.put(None)
+
+
 class Q(Generic[A]):
     init: Callable[[Cont[A]], None]
 
@@ -24,13 +41,11 @@ class Q(Generic[A]):
         self.init = init
 
     def run(self, cont: Cont[A]):
-        q = mp.Queue()
-        # spawn(self.init, args=(,))
-
-        p = mp.Process(target=partial(debug, f=self.init), args=(lambda x: q.put(x),))
-        p.start()
-
-        # self.init(cont)
+        print('run')
+        q = Queue()
+        populate.remote(self.init, q)
+        for a in iter_queue(q):
+            cont(a)
 
     def map(self, f: Callable[[A], B]) -> Q[B]:
 
@@ -70,9 +85,10 @@ def filter(f):
 
 
 def main():
-    # ray.init()
+    ray.init()
 
     c = range_q(10).bind(filter(lambda x: x % 2 == 0)).map(lambda x: x * 10)
+    # c = range_q(10).bind(filter(lambda x))
     c.run(print)
 
 
