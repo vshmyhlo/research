@@ -20,6 +20,8 @@ import rl.utils
 import rl.wrappers
 from rl.utils import TransitionList
 
+# TODO: render
+
 
 class Meter:
 
@@ -63,7 +65,7 @@ def build_opt_step(agent_forward, opt, config):
         entropy_tm1 = dist.entropy(logits_tm1)
         log_prob_tm1 = dist.logprob(traj['a_tm1'], logits_tm1)
 
-        v_target = rl.utils.n_step_bootstrapped_return(
+        v_target = rl.utils.n_step_bootstrapped_return_scan(
             r_t=traj['r_t'],
             d_t=traj['d_t'],
             v_t=jax.lax.stop_gradient(v_t),
@@ -113,7 +115,7 @@ def build_opt_step(agent_forward, opt, config):
 @click.option('--lr', 'lr', type=float, default=1e-2)
 def main(run_id, **kwargs):
     seed = 42
-    num_observations = 50000
+    num_observations = 5000
     run_id = os.path.join(run_id, ','.join(f'{k}={v}' for k, v in kwargs.items()))
 
     rng = hk.PRNGSequence(seed)
@@ -147,52 +149,53 @@ def main(run_id, **kwargs):
     meter = Meter()
     ep_meter = Meter()
 
-    while observations_seen < num_observations:
-        logits_tm1, _, agent_state_t = agent_forward(params, obs_tm1, agent_state_tm1)
+    with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
 
-        a_tm1 = rlax.softmax().sample(next(rng), logits_tm1)
+        while observations_seen < num_observations:
+            logits_tm1, _, agent_state_t = agent_forward(params, obs_tm1, agent_state_tm1)
 
-        obs_t, r_t, d_t, info = env.step(np.array(a_tm1))
+            a_tm1 = rlax.softmax().sample(next(rng), logits_tm1)
 
-        observations_seen += len(obs_t)
-        pbar.update(len(obs_t))
+            obs_t, r_t, d_t, info = env.step(np.array(a_tm1))
 
-        transitions.append(
-            obs_tm1=obs_tm1,
-            a_tm1=a_tm1,
-            r_t=r_t,
-            obs_t=obs_t,
-            d_t=d_t,
-        )
+            observations_seen += len(obs_t)
+            pbar.update(len(obs_t))
 
-        for i in jnp.where(d_t)[0]:
-            episodes_done += 1
-            info_at_end = jax.tree_util.tree_map(lambda x: x[i], info)
-            assert info_at_end['_episode']
-            ep_meter.update(info_at_end['episode'])
-            writer.add_scalar('episode/i', episodes_done, global_step=observations_seen)
+            transitions.append(
+                obs_tm1=obs_tm1,
+                a_tm1=a_tm1,
+                r_t=r_t,
+                obs_t=obs_t,
+                d_t=d_t,
+            )
 
-        obs_tm1, agent_state_tm1 = obs_t, agent_state_t
+            for i in jnp.where(d_t)[0]:
+                episodes_done += 1
+                info_at_end = jax.tree_util.tree_map(lambda x: x[i], info)
+                assert info_at_end['_episode']
+                ep_meter.update(info_at_end['episode'])
+                writer.add_scalar('episode/i', episodes_done, global_step=observations_seen)
 
-        if len(transitions) >= kwargs['horizon']:
-            batch = transitions.build_batch()
-            transitions = TransitionList()
-            # pprint(jax.tree_util.tree_map(lambda x: x.shape, batch))
-            params, opt_state, aux, grads = opt_step(params, opt_state, batch)
-            opt_steps += 1
-            meter.update(aux)
+            obs_tm1, agent_state_tm1 = obs_t, agent_state_t
 
-            if opt_steps % 10 == 0:
-                if meter:
-                    for k, v in meter.compute_and_reset().items():
-                        writer.add_scalar(k, v.mean(), global_step=observations_seen)
-                if ep_meter:
-                    for k, v in ep_meter.compute_and_reset().items():
-                        writer.add_scalar(f'episode/{k}', v.mean(), global_step=observations_seen)
+            if len(transitions) >= kwargs['horizon']:
+                batch = transitions.build_batch()
+                transitions = TransitionList()
+                params, opt_state, aux, grads = opt_step(params, opt_state, batch)
+                opt_steps += 1
+                meter.update(aux)
 
-                grads, _ = jax.flatten_util.ravel_pytree(grads)
-                grad_norm = jnp.linalg.norm(grads, 2)
-                writer.add_scalar('grad_norm', grad_norm, global_step=observations_seen)
+                if opt_steps % 10 == 0:
+                    if meter:
+                        for k, v in meter.compute_and_reset().items():
+                            writer.add_scalar(k, v.mean(), global_step=observations_seen)
+                    if ep_meter:
+                        for k, v in ep_meter.compute_and_reset().items():
+                            writer.add_scalar(f'episode/{k}', v.mean(), global_step=observations_seen)
+
+                    grads, _ = jax.flatten_util.ravel_pytree(grads)
+                    grad_norm = jnp.linalg.norm(grads, 2)
+                    writer.add_scalar('grad_norm', grad_norm, global_step=observations_seen)
 
 
 if __name__ == '__main__':

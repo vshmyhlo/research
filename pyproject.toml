@@ -1,14 +1,12 @@
 [tool.black]
-line-length = 99
-#target-version = ['py36', 'py37', 'py38']
+line-length = 120
 
-[tool.isort]
-ensure_newline_before_comments = true
-force_grid_wrap = 0
-include_trailing_comma = true
-line_length = 99
-multi_line_output = 3
-use_parentheses = true
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = []
+
 
 [tool.poetry]
 authors = ["Vlad Shmyhlo <aion.stu@gmail.com>"]
@@ -23,7 +21,7 @@ ipython = "^8.4.0"
 isort = "^5.10.1"
 jupyterlab = "^3.4.2"
 matplotlib = "^3.5.1"
-python = ">=3.8,<3.11"
+# python = ">=3.8,<3.11"
 scipy = "^1.8.0"
 torch = "^1.11.0"
 torchvision = "^0.12.0"
@@ -31,7 +29,7 @@ tqdm = "^4.64.0"
 autoflake = "^1.4"
 yapf = "^0.32.0"
 toml = "^0.10.2"
-gym = {extras = ["classic_control", "mujoco"], version = "^0.25.1"}
+gym = { extras = ["classic_control", "mujoco"], version = "^0.25.1" }
 dm-haiku = "^0.0.7"
 tensorboardX = "^2.5.1"
 tensorboard = "^2.10.0"
@@ -42,7 +40,7 @@ optax = "^0.1.3"
 jaxlib = "^0.3.15"
 rlax = "^0.1.4"
 fire = "^0.4.0"
-tritonclient = {extras = ["all"], version = "^2.25.0"}
+tritonclient = { extras = ["all"], version = "^2.25.0" }
 ray = "<2"
 grpcio = "1.41.0"
 
