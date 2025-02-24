@@ -10,5 +10,4 @@ log
 ray_tracing/output
 htmlcov
 node_modules
-
-
+tf_logs
