@@ -13,11 +13,17 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import rlax
+from flax.typing import (
+    PRNGKey as PRNGKey,
+)
+from flax.typing import (
+    Shape as Shape,
+)
 from jax.random import PRNGKey
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from utils import prng_sequence
+from utils import lerp, prng_sequence
 
 AgentCarry = Tuple[chex.Array, chex.Array]
 
@@ -25,7 +31,6 @@ AgentCarry = Tuple[chex.Array, chex.Array]
 @flax.struct.dataclass
 class TrainState:
     params: chex.ArrayTree
-    batch_stats: chex.ArrayTree
     opt_state: chex.ArrayTree
 
 
@@ -33,28 +38,19 @@ class ActorCritic(nn.Module):
     dim: int
     num_actions: int
 
-    def setup(self):
-        self.lstm = nn.LSTMCell(self.dim, carry_init=nn.initializers.zeros_init())
-
     @nn.compact
-    def __call__(
-        self,
-        carry: AgentCarry,
-        s: chex.Array,
-        use_running_average: bool = True,
-    ) -> Tuple[AgentCarry, Tuple[chex.Array, chex.Array]]:
-        carry, x = self.hidden(carry, s, use_running_average=use_running_average)
+    def __call__(self, carry: AgentCarry, s: chex.Array) -> Tuple[AgentCarry, Tuple[chex.Array, chex.Array]]:
+        carry, x = self.hidden(carry, s)
         logits = self.logits(x)
         value = self.value(x)
         return carry, (logits, value)
 
     @nn.compact
-    def hidden(self, carry: AgentCarry, s: chex.Array, use_running_average: bool) -> Tuple[AgentCarry, chex.Array]:
+    def hidden(self, carry: AgentCarry, s: chex.Array) -> Tuple[AgentCarry, chex.Array]:
         x = s
-        x = nn.BatchNorm(momentum=0.99, use_scale=False, use_bias=False)(x, use_running_average=use_running_average)
         x = nn.Dense(self.dim)(x)
         x = nn.relu(x)
-        return self.lstm(carry, x)
+        return nn.LSTMCell(self.dim)(carry, x)
 
     @nn.compact
     def logits(self, x: chex.Array) -> chex.Array:
@@ -77,11 +73,7 @@ class ActorCritic(nn.Module):
 
     @nn.compact
     def scan(
-        self,
-        carry: AgentCarry,
-        s_tm1: chex.Array,
-        done_t: chex.Array,
-        use_running_average: bool = True,
+        self, carry: AgentCarry, s_tm1: chex.Array, done_t: chex.Array
     ) -> Tuple[AgentCarry, Tuple[chex.Array, chex.Array]]:
         chex.assert_rank([s_tm1, done_t], [3, 2])
         chex.assert_equal_shape_prefix([s_tm1, done_t], 2)
@@ -91,21 +83,14 @@ class ActorCritic(nn.Module):
             chex.assert_rank([s_tm1, done_t], [2, 1])
             chex.assert_tree_shape_prefix([carry, s_tm1, done_t], s_tm1.shape[:1])
 
-            carry, (logits_tm1, v_tm1) = self(carry, s_tm1, use_running_average=use_running_average)
+            carry, (logits_tm1, v_tm1) = self(carry, s_tm1)
             carry = self.reset_carry(carry, done_t)
             return carry, (logits_tm1, v_tm1)
 
-        if use_running_average:
-            variable_broadcast = ["params", "batch_stats"]
-            variable_carry = False
-        else:
-            variable_broadcast = ["params"]
-            variable_carry = "batch_stats"
-
         scan = nn.scan(
             body_fn,
-            variable_broadcast=variable_broadcast,
-            variable_carry=variable_carry,
+            variable_broadcast="params",
+            variable_carry=False,
             in_axes=1,
             out_axes=1,
         )
@@ -178,6 +163,11 @@ def main():
         type=int,
         default=4,
     )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=2e-4,
+    )
 
     args = parser.parse_args()
 
@@ -198,17 +188,18 @@ def main():
             gym.wrappers.RecordEpisodeStatistics,
         ],
     )
+    envs = gym.wrappers.vector.NormalizeObservation(envs)
+    envs = gym.wrappers.vector.NormalizeReward(envs, gamma=args.discount)
 
     # init model
     agent = ActorCritic(args.dim, envs.single_action_space.n)
 
     # init optimizer
-    lr_schedule = optax.cosine_decay_schedule(2.5e-4, num_train_steps)
+    lr_schedule = optax.cosine_decay_schedule(args.lr, num_train_steps)
     opt = optax.chain(
         optax.clip_by_global_norm(0.5),
         optax.adam(lr_schedule),
     )
-    # reward_norm = NormStdEma(0.8)
 
     # init states
     s_tm1, _ = envs.reset(seed=42)
@@ -216,12 +207,11 @@ def main():
     agent_carry_tm1 = agent.initialize_carry(next(rng), s_tm1.shape)
     state = agent.init(next(rng), agent_carry_tm1, s_tm1)
     params = state.pop("params")
+    assert not state
     train_state = TrainState(
         params=params,
-        batch_stats=state.pop("batch_stats"),
         opt_state=opt.init(params),
     )
-    assert not state
     del state, params
 
     # make train step functino
@@ -234,15 +224,17 @@ def main():
         num_minibatches=args.num_minibatches,
     )
 
+    tmp = optax.schedules.cosine_decay_schedule(1, num_train_steps)
+    p_cosine_schedule = lambda x: 1 - tmp(x)
+
     with SummaryWriter(f"./tf_logs/{args.run_id}") as tb_writer:
         train_step = 0
         observations_seen = 0
         pbar = tqdm()
 
         while train_step < num_train_steps:
-            s_tm1, agent_carry_tm1, observations_seen, batch, batch_stats = collect_trajectory_batch(
+            s_tm1, agent_carry_tm1, observations_seen, batch = collect_trajectory_batch(
                 params=train_state.params,
-                batch_stats=train_state.batch_stats,
                 s_tm1=s_tm1,
                 agent_carry_tm1=agent_carry_tm1,
                 observations_seen=observations_seen,
@@ -253,18 +245,22 @@ def main():
                 rng=rng,
                 pbar=pbar,
             )
-            train_state = train_state.replace(batch_stats=batch_stats)
-            train_state, aux = opt_step(train_state, next(rng), **batch)
+            train_state, aux = opt_step(train_state, next(rng), p_cosine=p_cosine_schedule(train_step), **batch)
             train_step = optax.tree_utils.tree_get_all_with_path(train_state.opt_state, "count")[0][-1]
 
-            tb_writer.add_scalar("lr", lr_schedule(train_step), global_step=observations_seen)
-            tb_writer.add_scalar("grad_norm", aux["grad_norm"].mean(), global_step=observations_seen)
+            tb_writer.add_scalar("schedule/lr", lr_schedule(train_step), global_step=observations_seen)
+            tb_writer.add_scalar("schedule/ppo_epsilon", aux["ppo_epsilon"].mean(), global_step=observations_seen)
+            tb_writer.add_scalar("schedule/entropy_weight", aux["entropy_weight"].mean(), global_step=observations_seen)
 
             tb_writer.add_scalar("loss/total", aux["loss"].mean(), global_step=observations_seen)
             tb_writer.add_scalar("loss/pg", aux["pg_loss"].mean(), global_step=observations_seen)
             tb_writer.add_scalar("loss/entropy", aux["entropy_loss"].mean(), global_step=observations_seen)
             tb_writer.add_scalar("loss/critic", aux["critic_loss"].mean(), global_step=observations_seen)
 
+            tb_writer.add_scalar("grad_norm", aux["grad_norm"].mean(), global_step=observations_seen)
+
+            tb_writer.add_scalar("reward/mean", aux["reward"].mean(), global_step=observations_seen)
+            tb_writer.add_scalar("reward/std", jnp.std(aux["reward"]), global_step=observations_seen)
             tb_writer.add_scalar("adv/mean", aux["adv"].mean(), global_step=observations_seen)
             tb_writer.add_scalar("adv/std", jnp.std(aux["adv"]), global_step=observations_seen)
             tb_writer.add_scalar("td_error/mean", aux["td_error"].mean(), global_step=observations_seen)
@@ -285,7 +281,6 @@ def main():
 def collect_trajectory_batch(
     *,
     params: chex.ArrayTree,
-    batch_stats: chex.ArrayTree,
     s_tm1: chex.Array,
     agent_carry_tm1: AgentCarry,
     observations_seen: int,
@@ -295,20 +290,15 @@ def collect_trajectory_batch(
     horizon: int,
     rng: Iterator[chex.PRNGKey],
     pbar: tqdm,
-) -> Tuple[chex.Array, AgentCarry, int, chex.ArrayTree, chex.ArrayTree]:
+) -> Tuple[chex.Array, AgentCarry, int, chex.ArrayTree]:
     agent_carry_tm1_ = agent_carry_tm1
     batch = []
     for _ in range(horizon):
-        (agent_carry_t, (logits_tm1, v_tm1)), batch_stats_update = agent.apply(
-            {"params": params, "batch_stats": batch_stats},
+        agent_carry_t, (logits_tm1, v_tm1) = agent.apply(
+            {"params": params},
             agent_carry_tm1,
             s_tm1,
-            use_running_average=False,
-            mutable=["batch_stats"],
         )
-        batch_stats = batch_stats_update.pop("batch_stats")
-        assert not batch_stats_update
-
         dist_tm1 = distrax.Softmax(logits_tm1)
         a_tm1 = dist_tm1.sample(seed=next(rng))
         logprob_tm1 = dist_tm1.log_prob(a_tm1)
@@ -335,17 +325,17 @@ def collect_trajectory_batch(
 
         if jnp.any(done_t):
             infos_t = jax.tree.map(lambda x: x[done_t], infos_t)
-            tb_writer.add_scalar("episode/reward", infos_t["episode"]["r"].mean(), global_step=observations_seen)
+            tb_writer.add_scalar("episode/return", infos_t["episode"]["r"].mean(), global_step=observations_seen)
             tb_writer.add_scalar("episode/length", infos_t["episode"]["l"].mean(), global_step=observations_seen)
             tb_writer.add_scalar(
-                "episode/reward_over_length",
+                "episode/return_over_length",
                 infos_t["episode"]["r"].mean() / infos_t["episode"]["l"].mean(),
                 global_step=observations_seen,
             )
 
     batch = jax.tree.map(lambda *x: jnp.stack(x, 1), *batch)
     _, (_, batch["v_t"]) = agent.apply(
-        {"params": params, "batch_stats": batch_stats},
+        {"params": params},
         agent_carry_t,
         s_t,
     )
@@ -356,7 +346,6 @@ def collect_trajectory_batch(
         agent_carry_tm1,
         observations_seen,
         batch,
-        batch_stats,
     )
 
 
@@ -385,7 +374,6 @@ def make_opt_step(
     def compute_loss(
         params: chex.ArrayTree,
         *,
-        batch_stats: chex.ArrayTree,
         agent_carry_tm1: AgentCarry,
         s_tm1: chex.Array,
         a_tm1: chex.Array,
@@ -393,6 +381,8 @@ def make_opt_step(
         logprob_old_tm1: chex.Array,
         adv: chex.Array,
         td_target: chex.Array,
+        ppo_epsilon: float,
+        entropy_weight: float,
     ) -> Tuple[chex.Array, chex.ArrayTree]:
         dim = chex.Dimensions()
         dim["EHS"] = s_tm1.shape
@@ -401,7 +391,7 @@ def make_opt_step(
         chex.assert_tree_shape_prefix(agent_carry_tm1, dim["E"])
 
         _, (logits_tm1, v_tm1) = agent.apply(
-            {"params": params, "batch_stats": batch_stats},
+            {"params": params},
             agent_carry_tm1,
             s_tm1,
             done_t,
@@ -412,12 +402,12 @@ def make_opt_step(
         prob_ratios_tm1 = jnp.exp(logprob_tm1 - logprob_old_tm1)
 
         # compute loss
-        pg_loss = compute_ppo_loss(prob_ratios_tm1=prob_ratios_tm1, adv=normalize(adv), epsilon=0.2)
+        pg_loss = compute_ppo_loss(prob_ratios_tm1=prob_ratios_tm1, adv=normalize(adv), epsilon=ppo_epsilon)
         entropy_loss = compute_entropy_loss(logits_tm1)
         critic_loss = compute_value_loss(td_target=td_target, v_tm1=v_tm1)
 
         # total loss
-        loss = pg_loss + 0.01 * entropy_loss + 0.5 * critic_loss
+        loss = pg_loss + entropy_weight * entropy_loss + 0.5 * critic_loss
 
         return (
             loss,
@@ -426,7 +416,6 @@ def make_opt_step(
                 "pg_loss": pg_loss,
                 "entropy_loss": entropy_loss,
                 "critic_loss": critic_loss,
-                "adv": adv,
                 "prob_ratios_tm1": prob_ratios_tm1,
             },
         )
@@ -442,10 +431,13 @@ def make_opt_step(
         td_target: chex.Array,
         done_t: chex.Array,
         agent_carry_tm1: chex.Array,
+        p_cosine: float,
     ) -> Tuple[TrainState, chex.ArrayTree]:
+        ppo_epsilon = lerp(0.2, 0.1, p_cosine)
+        entropy_weight = lerp(1e-2, 1e-3, p_cosine)
+
         (loss, aux), grads = jax.value_and_grad(compute_loss, has_aux=True)(
             train_state.params,
-            batch_stats=train_state.batch_stats,
             s_tm1=s_tm1,
             a_tm1=a_tm1,
             logprob_old_tm1=logprob_old_tm1,
@@ -453,6 +445,8 @@ def make_opt_step(
             td_target=td_target,
             done_t=done_t,
             agent_carry_tm1=agent_carry_tm1,
+            ppo_epsilon=ppo_epsilon,
+            entropy_weight=entropy_weight,
         )
         updates, opt_state = opt.update(grads, train_state.opt_state)
         params = optax.apply_updates(train_state.params, updates)
@@ -460,11 +454,12 @@ def make_opt_step(
             **aux,
             "loss": loss,
             "grad_norm": optax.global_norm(updates),
+            "ppo_epsilon": ppo_epsilon,
+            "entropy_weight": entropy_weight,
         }
         return (
             TrainState(
                 params=params,
-                batch_stats=train_state.batch_stats,
                 opt_state=opt_state,
             ),
             aux,
@@ -483,6 +478,7 @@ def make_opt_step(
         v_tm1: chex.Array,
         v_t: chex.Array,
         agent_carry_tm1: chex.Array,
+        p_cosine: float,
     ):
         dim = chex.Dimensions()
         dim["NT"] = r_t.shape
@@ -522,7 +518,7 @@ def make_opt_step(
             minibatch_indices: chex.Array,
         ) -> Tuple[TrainState, Tuple[chex.Array, chex.ArrayTree]]:
             loss_minibatch = jax.tree.map(lambda x: x[minibatch_indices], loss_batch)
-            train_state, aux = minibatch_train_step(train_state, **loss_minibatch)
+            train_state, aux = minibatch_train_step(train_state, p_cosine=p_cosine, **loss_minibatch)
             return train_state, aux
 
         train_state, aux = jax.lax.scan(
@@ -530,6 +526,11 @@ def make_opt_step(
             train_state,
             minibatch_indices,
         )
+        aux = {
+            **aux,
+            "adv": adv,
+            "reward": r_t,
+        }
 
         return train_state, aux
 

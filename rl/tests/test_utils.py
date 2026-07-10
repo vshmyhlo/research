@@ -1,5 +1,8 @@
 import jax.numpy as jnp
+import pytest
 import rlax
+
+from utils import lerp
 
 
 def test_discounted_returns_1():
@@ -100,3 +103,16 @@ def test_gae_1():
     )
 
     assert jnp.allclose(lambda_, gae + v_tm1)
+
+
+@pytest.mark.parametrize(
+    ["a", "expected"],
+    (
+        (0, -10),
+        (1, 10),
+        (0.5, 0),
+        (0.25, -5),
+    ),
+)
+def test_lerp(a, expected):
+    assert expected == lerp(-10, 10, a)
